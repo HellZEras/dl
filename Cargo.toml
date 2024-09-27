@@ -1,0 +1,12 @@
+[package]
+name = "dl"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+content_disposition = "0.4.0"
+random-string = "1.1.0"
+regex = "1.10.6"
+reqwest = { version = "0.12.7", features = ["stream"] }
+thiserror = "1.0.64"
+tokio = { version = "1.40.0", features = ["full"] }
