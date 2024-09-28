@@ -37,9 +37,13 @@ pub struct Url {
 impl Url {
     async fn range_support(
         url: &str,
+        total_size: usize,
         client: &Client,
         headers: &HeaderMap,
     ) -> Result<bool, UrlError> {
+        if total_size == 0 {
+            return Ok(false);
+        }
         if let Some(header) = headers.get(ACCEPT_RANGES) {
             if header
                 .to_str()
@@ -86,11 +90,12 @@ impl Url {
             .parse_disposition()
             .or_else(|| Self::parse_url(link));
         let content_length = headers.clone().content_length();
-        let range_support = Self::range_support(link, &client, &headers).await?;
+        let total_size = content_length.unwrap_or_default();
+        let range_support = Self::range_support(link, total_size, &client, &headers).await?;
         Ok(Self {
             link: link.to_string(),
             filename,
-            total_size: content_length.unwrap_or_default(),
+            total_size,
             range_support,
         })
     }
