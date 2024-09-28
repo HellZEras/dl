@@ -5,7 +5,9 @@ use crate::file2dl::File2Dl;
 
 mod errors;
 mod file2dl;
+mod tmp;
 mod url;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), FileDownloadError> {
