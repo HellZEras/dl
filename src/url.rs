@@ -1,12 +1,10 @@
-use std::path::Path;
-use std::time::Duration;
-use content_disposition::parse_content_disposition;
-use random_string::generate;
-use regex::Regex;
-use reqwest::{ClientBuilder, Error, Response};
-use reqwest::header::{HeaderMap, CONTENT_DISPOSITION, CONTENT_LENGTH};
 use crate::errors::UrlError;
 use crate::errors::UrlError::InvalidUrl;
+use content_disposition::parse_content_disposition;
+use regex::Regex;
+use reqwest::header::{HeaderMap, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE};
+use reqwest::{Client, ClientBuilder, Error, Response};
+use std::time::Duration;
 
 const FILENAME_EXPRESSION: &str = r#"^[^\/:*?"<>|]+\.[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)?$"#;
 const URL_EXPRESSION: &str = r"/(https:\/\/www\.|http:\/\/www\.|https:\/\/|http:\/\/)?[a-zA-Z]{2,}(\.[a-zA-Z]{2,})(\.[a-zA-Z]{2,})?\/[a-zA-Z0-9]{2,}|((https:\/\/www\.|http:\/\/www\.|https:\/\/|http:\/\/)?[a-zA-Z]{2,}(\.[a-zA-Z]{2,})(\.[a-zA-Z]{2,})?)|(https:\/\/www\.|http:\/\/www\.|https:\/\/|http:\/\/)?[a-zA-Z0-9]{2,}\.[a-zA-Z0-9]{2,}\.[a-zA-Z0-9]{2,}(\.[a-zA-Z0-9]{2,})?/g";
@@ -28,17 +26,38 @@ impl HeaderParse for HeaderMap {
     }
 }
 
-
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Url {
-    pub url: String,
+    pub link: String,
     pub filename: Option<String>,
     pub total_size: usize,
+    pub range_support: bool,
 }
 
 impl Url {
-    async fn head_req(link: &str) -> Result<Response, Error> {
-        let client = ClientBuilder::new().timeout(Duration::from_secs(5)).build()?;
+    async fn range_support(
+        url: &str,
+        client: &Client,
+        headers: &HeaderMap,
+    ) -> Result<bool, UrlError> {
+        if let Some(header) = headers.get(ACCEPT_RANGES) {
+            if header
+                .to_str()
+                .map(|v| v.to_lowercase().contains("bytes"))
+                .unwrap_or(false)
+            {
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+        let res = client.get(url).header(RANGE, "bytes=0-1").send().await?;
+        if res.headers().to_owned().content_length() == Some(1) {
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    async fn head_req(link: &str, client: &Client) -> Result<Response, Error> {
         client.head(link).send().await
     }
     fn parse_url(link: &str) -> Option<String> {
@@ -57,14 +76,22 @@ impl Url {
         if !re.is_match(link) {
             return Err(InvalidUrl);
         }
-        let res = Self::head_req(link).await?;
+        let client = ClientBuilder::new()
+            .timeout(Duration::from_secs(5))
+            .build()?;
+        let res = Self::head_req(link, &client).await?;
         let headers = res.headers().to_owned();
-        let filename: Option<String> = headers.clone().parse_disposition().or_else(|| Self::parse_url(link));
-        let content_length = headers.content_length();
+        let filename: Option<String> = headers
+            .clone()
+            .parse_disposition()
+            .or_else(|| Self::parse_url(link));
+        let content_length = headers.clone().content_length();
+        let range_support = Self::range_support(link, &client, &headers).await?;
         Ok(Self {
-            url: link.to_string(),
+            link: link.to_string(),
             filename,
             total_size: content_length.unwrap_or_default(),
+            range_support,
         })
     }
 }

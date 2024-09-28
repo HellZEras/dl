@@ -1,12 +1,18 @@
+use errors::FileDownloadError;
+
 use crate::file2dl::{Download, File2Dl};
 
 mod errors;
-mod url;
 mod file2dl;
+mod url;
 
 #[tokio::main]
-async fn main() {
-    let file = File2Dl::from("https://examplefile.com/file-download/22").await.unwrap();
+async fn main() -> Result<(), FileDownloadError> {
+    let file = File2Dl::new("https://filesampleshub.com/download/document/txt/sample1.txt")
+        .await
+        .unwrap();
     dbg!(&file);
-    file.single_thread_dl("Downloads").await.unwrap()
+    file.switch_status().unwrap();
+    file.single_thread_dl("Downloads").await?;
+    Ok(())
 }
