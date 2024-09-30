@@ -1,5 +1,6 @@
+use std::sync::mpsc::SendError;
 use thiserror::Error;
-use tokio::sync::watch::error::RecvError;
+use tokio::task::JoinHandle;
 
 #[derive(Error, Debug)]
 pub enum UrlError {
@@ -22,6 +23,6 @@ pub enum FileDownloadError {
     FileCreation(#[from] std::io::Error),
     #[error("Request failed")]
     RequestFailure(#[from] reqwest::Error),
-    #[error("Watch channel receive error")]
-    WatchChannel(#[from] RecvError),
+    #[error("Sending the data to be written failed")]
+    WatchChannel(#[from] SendError<(Vec<u8>, usize)>),
 }

@@ -2,37 +2,60 @@ use crate::errors::{FileDownloadError, UrlError};
 use crate::tmp::init_tmp_if_supported;
 use crate::url::Url;
 use crate::utils::{gen_name, init_req};
-use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::fs::{create_dir, File};
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use tokio::sync::watch::error::SendError;
-use tokio::sync::watch::{self, channel};
+use std::sync::mpsc::channel;
+use std::thread::{sleep, JoinHandle};
+use std::time::Duration;
 
-type Status = (watch::Sender<bool>, watch::Receiver<bool>);
 pub trait Download {
-    async fn single_thread_dl(self, dir: &str) -> Result<(), FileDownloadError>;
+    fn single_thread_dl(self, dir: &str) -> Result<(), FileDownloadError>;
 }
 impl Download for File2Dl {
-    async fn single_thread_dl(mut self, dir: &str) -> Result<(), FileDownloadError> {
+    fn single_thread_dl(mut self, dir: &str) -> Result<(), FileDownloadError> {
         if !Path::new(dir).exists() {
             create_dir(dir)?
         }
         let filename = gen_name(&self, dir)?;
-        let full_path = format!("{dir}/{filename}");
+        let full_path = format!("{dir}/{}", &filename);
         let mut file = File::create(full_path.clone())?;
-        let mut stream = {
-            let res = init_req(&self).await?;
-            res.bytes_stream()
-        };
-        while let Some(packed_bytes) = stream.next().await {
-            self.status.1.wait_for(|cond| *cond).await?;
-            let bytes = packed_bytes?;
-            file.seek(SeekFrom::Start(self.size_on_disk as u64))?;
-            file.write_all(bytes.as_ref())?;
-            self.size_on_disk += bytes.len();
-            init_tmp_if_supported(&self, &filename, dir)?;
+        let mut res = init_req(&self)?;
+        let (tx, rx) = channel::<(Vec<u8>, usize)>();
+        let write: JoinHandle<Result<(), FileDownloadError>> = std::thread::spawn(move || {
+            while let Ok((buffer, offset)) = rx.recv() {
+                file.seek(SeekFrom::Start(offset as u64)).unwrap();
+                file.write(&buffer).unwrap();
+            }
+            Ok(())
+        });
+        let mut threads = Vec::new();
+        let dir = dir.to_string();
+        let send: JoinHandle<Result<(), FileDownloadError>> = std::thread::spawn(move || {
+            loop {
+                if self.status {
+                    let mut buffer = vec![0; 8192];
+                    let bytes_read = res.read(&mut buffer)?;
+                    if bytes_read == 0 {
+                        break;
+                    }
+                    buffer.truncate(bytes_read);
+                    tx.send((buffer.clone(), self.size_on_disk))?;
+                    self.size_on_disk += bytes_read;
+                    println!("{}%", self.size_on_disk / self.url.total_size * 100);
+                    init_tmp_if_supported(&self, &filename, &dir)?;
+                } else {
+                    sleep(Duration::from_millis(100))
+                }
+            }
+            Ok(())
+        });
+        threads.push(write);
+        threads.push(send);
+        for thread in threads {
+            let packed_thread = thread.join().expect("Failed to join thread");
+            packed_thread?
         }
         Ok(())
     }
@@ -42,8 +65,7 @@ impl Download for File2Dl {
 pub struct File2Dl {
     pub url: Url,
     pub size_on_disk: usize,
-    pub status: Status,
-    pub state: State,
+    pub status: bool,
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -54,27 +76,23 @@ pub enum State {
 }
 
 impl File2Dl {
-    pub fn switch_status(&self) -> Result<(), SendError<bool>> {
-        let rx = !*self.status.1.borrow();
-        let tx = &self.status.0;
-        tx.send(rx)
+    pub fn switch_status(&mut self) {
+        self.status = !self.status;
     }
 
     pub fn default() -> Self {
         Self {
             url: Url::default(),
             size_on_disk: 0,
-            status: channel(false),
-            state: State::default(),
+            status: false,
         }
     }
-    pub async fn new(link: &str) -> Result<Self, UrlError> {
-        let url = Url::from(link).await?;
+    pub fn new(link: &str) -> Result<Self, UrlError> {
+        let url = Url::from(link)?;
         Ok(Self {
             url,
             size_on_disk: 0,
-            status: channel(false),
-            state: State::default(),
+            status: false,
         })
     }
 }

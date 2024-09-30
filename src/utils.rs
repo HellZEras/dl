@@ -7,7 +7,7 @@ use std::fs::{read_dir, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use reqwest::{ClientBuilder, Response};
+use reqwest::blocking::{ClientBuilder, Response};
 use reqwest::header::RANGE;
 use tokio::sync::watch::channel;
 
@@ -86,8 +86,7 @@ fn build_file2dl(collection: Vec<Option<MetaData>>) -> Vec<File2Dl> {
                 File2Dl {
                     url,
                     size_on_disk: metadata.size_on_disk,
-                    status: channel(false),
-                    state: metadata.state,
+                    status: false,
                 }
             })
         })
@@ -110,7 +109,7 @@ pub fn from_dir(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
     Ok(processed_collection)
 }
 
-pub async fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
+pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
     let client = ClientBuilder::new()
         .timeout(Duration::from_secs(7))
         .build()?;
@@ -119,9 +118,9 @@ pub async fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
         Ok(client
             .get(file2dl.url.link.clone())
             .header(RANGE, range_value)
-            .send()
-            .await?)
+            .send()?
+        )
     } else {
-        Ok(client.get(file2dl.url.link.clone()).send().await?)
+        Ok(client.get(file2dl.url.link.clone()).send()?)
     }
 }
