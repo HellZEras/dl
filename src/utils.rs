@@ -3,13 +3,12 @@ use crate::file2dl::State::Incomplete;
 use crate::tmp::{init_meta_data, MetaData};
 use crate::url::Url;
 use random_string::generate;
+use reqwest::blocking::{ClientBuilder, Response};
+use reqwest::header::RANGE;
 use std::fs::{read_dir, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use reqwest::blocking::{ClientBuilder, Response};
-use reqwest::header::RANGE;
-use tokio::sync::watch::channel;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -24,15 +23,18 @@ pub fn gen_if_some(dl_location: &str, filename: &str, url: &str) -> Result<Strin
     let path = Path::new(dl_location);
     if path.join(filename).exists() {
         let tmp_file = format!("{filename}.metadata");
+        println!("{}", tmp_file);
         let tmp_path = path.join(tmp_file);
+        println!("{:?}", tmp_path);
         if tmp_path.exists() {
+            println!("hello");
             let mut file = File::open(&tmp_path)?;
             let mut buf = String::new();
             file.read_to_string(&mut buf)?;
             let meta_data = serde_json::from_str::<MetaData>(&buf)?;
             if meta_data.state == Incomplete
                 && meta_data.link == url
-                && get_file_size(&path.join(filename))? == meta_data.size_on_disk
+                && dbg!(get_file_size(&path.join(filename))? == meta_data.size_on_disk)
             {
                 return Ok(filename.to_owned());
             }
@@ -61,18 +63,18 @@ pub fn gen_if_none(dl_location: &str) -> String {
     format!("{}.unknown", filename)
 }
 
-pub fn gen_name(f2dl: &File2Dl, dl_location: &str) -> Result<String, std::io::Error> {
+pub fn gen_name(f2dl: &File2Dl) -> Result<String, std::io::Error> {
     if f2dl.url.filename.is_some() {
         Ok(gen_if_some(
-            dl_location,
+            &f2dl.dir,
             f2dl.url.filename.as_ref().unwrap(),
             &f2dl.url.link,
         )?)
     } else {
-        Ok(gen_if_none(dl_location))
+        Ok(gen_if_none(&f2dl.dir))
     }
 }
-fn build_file2dl(collection: Vec<Option<MetaData>>) -> Vec<File2Dl> {
+fn build_file2dl(collection: Vec<Option<MetaData>>, dir: &str) -> Vec<File2Dl> {
     collection
         .into_iter()
         .filter_map(|packed_metadata| {
@@ -87,6 +89,7 @@ fn build_file2dl(collection: Vec<Option<MetaData>>) -> Vec<File2Dl> {
                     url,
                     size_on_disk: metadata.size_on_disk,
                     status: false,
+                    dir: dir.to_owned(),
                 }
             })
         })
@@ -105,7 +108,7 @@ pub fn from_dir(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
             }
         }
     }
-    let processed_collection = build_file2dl(collection);
+    let processed_collection = build_file2dl(collection, dir);
     Ok(processed_collection)
 }
 
@@ -118,8 +121,7 @@ pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
         Ok(client
             .get(file2dl.url.link.clone())
             .header(RANGE, range_value)
-            .send()?
-        )
+            .send()?)
     } else {
         Ok(client.get(file2dl.url.link.clone()).send()?)
     }

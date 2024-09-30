@@ -3,7 +3,7 @@ use crate::errors::UrlError::InvalidUrl;
 use content_disposition::parse_content_disposition;
 use regex::Regex;
 use reqwest::header::{HeaderMap, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE};
-use reqwest::{blocking::Client, blocking::ClientBuilder, Error, blocking::Response};
+use reqwest::{blocking::Client, blocking::ClientBuilder, blocking::Response, Error};
 use std::time::Duration;
 
 const FILENAME_EXPRESSION: &str = r#"^[^\/:*?"<>|]+\.[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)?$"#;

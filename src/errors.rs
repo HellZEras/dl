@@ -1,6 +1,5 @@
 use std::sync::mpsc::SendError;
 use thiserror::Error;
-use tokio::task::JoinHandle;
 
 #[derive(Error, Debug)]
 pub enum UrlError {

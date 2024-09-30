@@ -38,11 +38,7 @@ pub fn init_meta_data(path: &Path, file: &str) -> Result<Option<MetaData>, std::
         Ok(None)
     }
 }
-pub fn init_tmp_if_supported(
-    f2dl: &File2Dl,
-    filename: &str,
-    dir: &str,
-) -> Result<(), std::io::Error> {
+pub fn init_tmp_if_supported(f2dl: &File2Dl, filename: &str) -> Result<(), std::io::Error> {
     if f2dl.url.range_support {
         let json_str = {
             let state = {
@@ -61,7 +57,7 @@ pub fn init_tmp_if_supported(
             };
             json!(tmp_str).to_string()
         };
-        let full_path = format!("{dir}/{filename}");
+        let full_path = format!("{}/{filename}", f2dl.dir);
         let tmp_name = format!("{}.metadata", full_path);
         let mut tmp_file = OpenOptions::new()
             .create(true)
