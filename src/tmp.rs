@@ -2,9 +2,8 @@ use crate::file2dl::State::Incomplete;
 use crate::file2dl::{File2Dl, State};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
-use std::path::Path;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::sync::atomic::Ordering;
 
 #[derive(Debug, Serialize, Deserialize, Default)]

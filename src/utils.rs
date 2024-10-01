@@ -5,11 +5,10 @@ use crate::url::Url;
 use random_string::generate;
 use reqwest::blocking::{ClientBuilder, Response};
 use reqwest::header::RANGE;
-use std::fs::{read_dir, File};
+use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";

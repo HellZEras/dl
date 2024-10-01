@@ -1,9 +1,3 @@
-use std::{thread::sleep, time::Duration};
-
-use crossterm::{
-    event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers},
-    terminal::enable_raw_mode,
-};
 use file2dl::Download;
 
 use crate::file2dl::File2Dl;
