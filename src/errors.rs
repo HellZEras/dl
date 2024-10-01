@@ -7,6 +7,8 @@ pub enum UrlError {
     InvalidUrl,
     #[error("Couldn't reach url")]
     FailedRequest(#[from] reqwest::Error),
+    #[error("File name acquisition failed")]
+    NameGeneration(#[from] std::io::Error),
 }
 
 #[derive(Error, Debug)]

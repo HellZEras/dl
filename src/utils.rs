@@ -21,28 +21,29 @@ fn get_file_size(path: &PathBuf) -> Result<usize, std::io::Error> {
 //if name is Some in the struct it will check if the size on disk of the file is smaller than content length
 //and in that case it returns that same file name instead of the generated name to resume download
 //else it would generate a name with a counter to avoid duplication
-pub fn gen_if_some(dl_location: &str, filename: &str, url: &str) -> Result<String, std::io::Error> {
-    let path = Path::new(dl_location);
+pub fn gen_if_name_some(
+    link: &str,
+    dir: &str,
+    filename: &str,
+    total_size: usize,
+) -> Result<(String, usize), std::io::Error> {
+    let path = Path::new(dir);
     if path.join(filename).exists() {
-        let tmp_file = format!("{filename}.metadata");
-        println!("{}", tmp_file);
+        let tmp_file = format!(".{}.metadata", filename);
         let tmp_path = path.join(tmp_file);
-        println!("{:?}", tmp_path);
         if tmp_path.exists() {
-            println!("hello");
             let mut file = File::open(&tmp_path)?;
             let mut buf = String::new();
             file.read_to_string(&mut buf)?;
             let meta_data = serde_json::from_str::<MetaData>(&buf)?;
             if meta_data.state == Incomplete
-                && meta_data.link == url
-                && get_file_size(&path.join(filename))? == meta_data.size_on_disk
+                && meta_data.link == link
+                && total_size == meta_data.total_size
             {
-                return Ok(filename.to_owned());
+                return Ok((filename.to_owned(), get_file_size(&path.join(filename))?));
             }
         }
     }
-
     let mut counter = 2;
     let mut name = filename.to_string();
 
@@ -54,48 +55,57 @@ pub fn gen_if_some(dl_location: &str, filename: &str, url: &str) -> Result<Strin
 
         counter += 1;
     }
-    Ok(name)
+    Ok((name, 0))
 }
-pub fn gen_if_none(dl_location: &str) -> String {
+pub fn gen_if_name_none(dl_location: &str) -> (String, usize) {
     let mut filename = generate(8, CHARSET);
     let full_path = Path::new(dl_location);
     while full_path.join(filename.clone()).exists() {
         filename = generate(8, CHARSET);
     }
-    format!("{}.unknown", filename)
+    (format!("{}.unknown", filename), 0)
 }
 
-pub fn gen_name(f2dl: &File2Dl) -> Result<String, std::io::Error> {
-    if f2dl.url.filename.is_some() {
-        Ok(gen_if_some(
-            &f2dl.dir,
-            f2dl.url.filename.as_ref().unwrap(),
-            &f2dl.url.link,
+pub fn gen_name(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
+    let filename = url.filename;
+    if filename.clone().is_some() {
+        Ok(gen_if_name_some(
+            &url.link,
+            dir,
+            &filename.unwrap_or_default(),
+            url.total_size,
         )?)
     } else {
-        Ok(gen_if_none(&f2dl.dir))
+        Ok(gen_if_name_none(dir))
     }
 }
-fn build_file2dl(collection: Vec<Option<MetaData>>, dir: &str) -> Vec<File2Dl> {
+fn build_file2dl(
+    collection: Vec<Option<MetaData>>,
+    dir: &str,
+) -> Result<Vec<File2Dl>, std::io::Error> {
     collection
         .into_iter()
         .filter_map(|packed_metadata| {
-            packed_metadata.map(|metadata| {
+            packed_metadata.map(|meta_data| {
+                let filename = meta_data.filename;
                 let url = Url {
-                    link: metadata.link,
-                    filename: Some(metadata.filename),
-                    total_size: metadata.total_size,
+                    link: meta_data.link.clone(),
+                    filename: Some(filename.clone()),
+                    total_size: meta_data.total_size,
                     range_support: true,
                 };
-                File2Dl {
+                let (name_on_disk, size_on_disk) =
+                    gen_if_name_some(&meta_data.link, dir, &filename, meta_data.total_size)?;
+                Ok(File2Dl {
                     url,
-                    size_on_disk: Arc::new(AtomicUsize::new(metadata.size_on_disk)),
+                    size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
                     status: Arc::new(AtomicBool::new(false)),
+                    name_on_disk,
                     dir: dir.to_owned(),
-                }
+                })
             })
         })
-        .collect()
+        .collect::<Result<Vec<File2Dl>, std::io::Error>>()
 }
 pub fn from_dir(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
     let path: &Path = Path::new(dir);
@@ -110,7 +120,7 @@ pub fn from_dir(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
             }
         }
     }
-    let processed_collection = build_file2dl(collection, dir);
+    let processed_collection = build_file2dl(collection, dir)?;
     Ok(processed_collection)
 }
 
