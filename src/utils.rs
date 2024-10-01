@@ -66,7 +66,7 @@ pub fn gen_if_name_none(dl_location: &str) -> (String, usize) {
     (format!("{}.unknown", filename), 0)
 }
 
-pub fn gen_name(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
+pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
     let filename = url.filename;
     if filename.clone().is_some() {
         Ok(gen_if_name_some(

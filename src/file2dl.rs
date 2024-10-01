@@ -1,7 +1,7 @@
 use crate::errors::{FileDownloadError, UrlError};
 use crate::tmp::init_tmp_if_supported;
 use crate::url::Url;
-use crate::utils::{gen_name, init_req};
+use crate::utils::{gen, init_req};
 use serde::{Deserialize, Serialize};
 use std::fs::{create_dir, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -84,7 +84,7 @@ impl File2Dl {
 
     pub fn new(link: &str, dir: &str) -> Result<Self, UrlError> {
         let url = Url::from(link)?;
-        let (name_on_disk, size_on_disk) = gen_name(url.clone(), dir)?;
+        let (name_on_disk, size_on_disk) = gen(url.clone(), dir)?;
         Ok(Self {
             url,
             size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
