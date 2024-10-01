@@ -5,6 +5,7 @@ use serde_json::json;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
+use std::sync::atomic::Ordering;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct MetaData {
@@ -41,8 +42,9 @@ pub fn init_meta_data(path: &Path, file: &str) -> Result<Option<MetaData>, std::
 pub fn init_tmp_if_supported(f2dl: &File2Dl, filename: &str) -> Result<(), std::io::Error> {
     if f2dl.url.range_support {
         let json_str = {
+            let size_on_disk = f2dl.size_on_disk.load(Ordering::Relaxed);
             let state = {
-                if f2dl.size_on_disk == f2dl.url.total_size {
+                if size_on_disk == f2dl.url.total_size {
                     State::Complete
                 } else {
                     Incomplete
@@ -51,7 +53,7 @@ pub fn init_tmp_if_supported(f2dl: &File2Dl, filename: &str) -> Result<(), std::
             let tmp_str = MetaData {
                 filename: filename.to_owned(),
                 link: f2dl.url.link.clone(),
-                size_on_disk: f2dl.size_on_disk,
+                size_on_disk,
                 total_size: f2dl.url.total_size,
                 state,
             };

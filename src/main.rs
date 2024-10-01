@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use arrayvec::ArrayString;
 use crossterm::{
     event::{read, Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers},
     terminal::enable_raw_mode,
@@ -24,9 +25,14 @@ fn main() {
     )
     .unwrap();
     dbg!(&file);
-    enable_raw_mode().unwrap();
-    let file = Arc::new(Mutex::new(file));
+
+    // Wrap the File2Dl instance in an Arc
+    let file = Arc::new(file);
     let closure_clone = file.clone();
+
+    enable_raw_mode().unwrap();
+
+    // Spawning a thread to listen for 'p' key press to toggle the status
     std::thread::spawn(move || loop {
         if let Ok(Event::Key(KeyEvent {
             code: KeyCode::Char('p'),
@@ -35,11 +41,18 @@ fn main() {
             state: KeyEventState::NONE,
         })) = read()
         {
-            let mut write_lock = closure_clone.try_lock().unwrap();
-            write_lock.status = !write_lock.status;
+            let current_status = closure_clone
+                .status
+                .load(std::sync::atomic::Ordering::Relaxed);
+            closure_clone
+                .status
+                .store(!current_status, std::sync::atomic::Ordering::Relaxed);
             println!("toggled");
         }
         sleep(Duration::from_millis(100));
     });
-    file.single_thread_dl().unwrap();
+
+    // Start single-threaded download (single_thread_dl)
+    file.clone().single_thread_dl().unwrap();
+    dbg!(&file);
 }

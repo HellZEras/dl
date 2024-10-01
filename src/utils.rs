@@ -8,6 +8,8 @@ use reqwest::header::RANGE;
 use std::fs::{read_dir, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -34,7 +36,7 @@ pub fn gen_if_some(dl_location: &str, filename: &str, url: &str) -> Result<Strin
             let meta_data = serde_json::from_str::<MetaData>(&buf)?;
             if meta_data.state == Incomplete
                 && meta_data.link == url
-                && dbg!(get_file_size(&path.join(filename))? == meta_data.size_on_disk)
+                && get_file_size(&path.join(filename))? == meta_data.size_on_disk
             {
                 return Ok(filename.to_owned());
             }
@@ -87,8 +89,8 @@ fn build_file2dl(collection: Vec<Option<MetaData>>, dir: &str) -> Vec<File2Dl> {
                 };
                 File2Dl {
                     url,
-                    size_on_disk: metadata.size_on_disk,
-                    status: false,
+                    size_on_disk: Arc::new(AtomicUsize::new(metadata.size_on_disk)),
+                    status: Arc::new(AtomicBool::new(false)),
                     dir: dir.to_owned(),
                 }
             })
@@ -117,7 +119,11 @@ pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
         .timeout(Duration::from_secs(7))
         .build()?;
     if file2dl.url.range_support {
-        let range_value = format!("bytes={}-{}", file2dl.size_on_disk, file2dl.url.total_size);
+        let range_value = format!(
+            "bytes={}-{}",
+            file2dl.size_on_disk.load(Ordering::Relaxed),
+            file2dl.url.total_size
+        );
         Ok(client
             .get(file2dl.url.link.clone())
             .header(RANGE, range_value)
