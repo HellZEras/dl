@@ -19,24 +19,9 @@ fn main() {
         "Downloads",
     )
     .unwrap();
-
-    enable_raw_mode().unwrap();
-    let copy = file.clone();
-    std::thread::spawn(move || loop {
-        if let Ok(Event::Key(KeyEvent {
-            code: KeyCode::Char('p'),
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        })) = read()
-        {
-            let current_status = copy.status.load(std::sync::atomic::Ordering::Relaxed);
-            copy.status
-                .store(!current_status, std::sync::atomic::Ordering::Relaxed);
-            println!("toggled");
-        }
-        sleep(Duration::from_millis(100));
-    });
-
-    file.clone().single_thread_dl().unwrap();
+    file.single_thread_dl().unwrap();
+    // let collection = File2Dl::from("Downloads").unwrap();
+    // for file in collection {
+    //     dbg!(file);
+    // }
 }

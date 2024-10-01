@@ -1,6 +1,6 @@
 use crate::file2dl::File2Dl;
 use crate::file2dl::State::Incomplete;
-use crate::tmp::{init_meta_data, MetaData};
+use crate::tmp::MetaData;
 use crate::url::Url;
 use random_string::generate;
 use reqwest::blocking::{ClientBuilder, Response};
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
 
-fn get_file_size(path: &PathBuf) -> Result<usize, std::io::Error> {
+pub fn get_file_size(path: &PathBuf) -> Result<usize, std::io::Error> {
     let file = File::open(path)?;
     Ok(file.metadata()?.len() as usize)
 }
@@ -60,7 +60,7 @@ pub fn gen_if_name_some(
 pub fn gen_if_name_none(dl_location: &str) -> (String, usize) {
     let mut filename = generate(8, CHARSET);
     let full_path = Path::new(dl_location);
-    while full_path.join(filename.clone()).exists() {
+    while full_path.join(&filename).exists() {
         filename = generate(8, CHARSET);
     }
     (format!("{}.unknown", filename), 0)
@@ -78,50 +78,6 @@ pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
     } else {
         Ok(gen_if_name_none(dir))
     }
-}
-fn build_file2dl(
-    collection: Vec<Option<MetaData>>,
-    dir: &str,
-) -> Result<Vec<File2Dl>, std::io::Error> {
-    collection
-        .into_iter()
-        .filter_map(|packed_metadata| {
-            packed_metadata.map(|meta_data| {
-                let filename = meta_data.filename;
-                let url = Url {
-                    link: meta_data.link.clone(),
-                    filename: Some(filename.clone()),
-                    total_size: meta_data.total_size,
-                    range_support: true,
-                };
-                let (name_on_disk, size_on_disk) =
-                    gen_if_name_some(&meta_data.link, dir, &filename, meta_data.total_size)?;
-                Ok(File2Dl {
-                    url,
-                    size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
-                    status: Arc::new(AtomicBool::new(false)),
-                    name_on_disk,
-                    dir: dir.to_owned(),
-                })
-            })
-        })
-        .collect::<Result<Vec<File2Dl>, std::io::Error>>()
-}
-pub fn from_dir(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
-    let path: &Path = Path::new(dir);
-    let mut collection = Vec::new();
-    if path.is_dir() && path.exists() {
-        for packed_file in read_dir(path)? {
-            if let Some(file) = packed_file?.file_name().to_str() {
-                if !file.contains(".metadata") {
-                    let tmp_data = init_meta_data(path, file)?;
-                    collection.push(tmp_data);
-                }
-            }
-        }
-    }
-    let processed_collection = build_file2dl(collection, dir)?;
-    Ok(processed_collection)
 }
 
 pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {

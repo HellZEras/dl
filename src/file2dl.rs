@@ -1,9 +1,9 @@
 use crate::errors::{FileDownloadError, UrlError};
-use crate::tmp::init_tmp_if_supported;
+use crate::tmp::{init_tmp_if_supported, MetaData};
 use crate::url::Url;
-use crate::utils::{gen, init_req};
+use crate::utils::{gen, get_file_size, init_req};
 use serde::{Deserialize, Serialize};
-use std::fs::{create_dir, OpenOptions};
+use std::fs::{create_dir, read_dir, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -12,10 +12,10 @@ use std::thread::sleep;
 use std::time::Duration;
 
 pub trait Download {
-    fn single_thread_dl(&mut self) -> Result<(), FileDownloadError>;
+    fn single_thread_dl(&self) -> Result<(), FileDownloadError>;
 }
 impl Download for File2Dl {
-    fn single_thread_dl(&mut self) -> Result<(), FileDownloadError> {
+    fn single_thread_dl(&self) -> Result<(), FileDownloadError> {
         if !Path::new(&self.dir).exists() {
             create_dir(&self.dir)?
         }
@@ -88,9 +88,54 @@ impl File2Dl {
         Ok(Self {
             url,
             size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
-            status: Arc::new(AtomicBool::new(false)),
+            status: Arc::new(AtomicBool::new(true)),
             name_on_disk,
             dir: dir.to_owned(),
         })
+    }
+    pub fn from(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
+        let mut collection: Vec<File2Dl> = Vec::new();
+        let path = Path::new(dir);
+        if path.is_dir() {
+            for entry in read_dir(path)? {
+                let file = entry?;
+                let file_name = {
+                    let os_str = file.file_name();
+                    os_str
+                        .to_str()
+                        .expect("Failed to parse filename")
+                        .to_string()
+                };
+
+                if file_name.contains(".metadata") {
+                    continue;
+                }
+                let tmp_file_name = format!(".{}.metadata", &file_name);
+                let tmp_path = Path::new(dir).join(tmp_file_name);
+                if tmp_path.exists() {
+                    let mut buffer = String::new();
+                    let mut tmp_file = File::open(tmp_path)?;
+                    tmp_file.read_to_string(&mut buffer)?;
+                    let meta_data: MetaData = serde_json::from_str(&buffer)?;
+                    let file2dl_path = Path::new(dir).join(&file_name);
+                    let size_on_disk = Arc::new(AtomicUsize::new(get_file_size(&file2dl_path)?));
+                    let url = Url {
+                        link: meta_data.link,
+                        filename: Some(meta_data.file_name),
+                        total_size: meta_data.total_size,
+                        range_support: true,
+                    };
+                    let file2dl = File2Dl {
+                        url,
+                        size_on_disk,
+                        status: Arc::new(AtomicBool::new(false)),
+                        name_on_disk: file_name,
+                        dir: dir.to_string(),
+                    };
+                    collection.push(file2dl);
+                }
+            }
+        }
+        Ok(collection)
     }
 }

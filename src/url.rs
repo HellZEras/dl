@@ -35,7 +35,7 @@ pub struct Url {
 }
 
 impl Url {
-    fn range_support(
+    pub fn range_support(
         url: &str,
         total_size: usize,
         client: &Client,
