@@ -10,7 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
-
 pub trait Download {
     fn single_thread_dl(&self) -> Result<(), FileDownloadError>;
 }
@@ -88,7 +87,7 @@ impl File2Dl {
         Ok(Self {
             url,
             size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
-            status: Arc::new(AtomicBool::new(true)),
+            status: Arc::new(AtomicBool::new(false)),
             name_on_disk,
             dir: dir.to_owned(),
         })

@@ -80,9 +80,7 @@ pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
 }
 
 pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
-    let client = ClientBuilder::new()
-        .timeout(Duration::from_secs(7))
-        .build()?;
+    let client = ClientBuilder::new().build()?;
     if file2dl.url.range_support {
         let range_value = format!(
             "bytes={}-{}",
