@@ -1,5 +1,4 @@
 use crate::file2dl::File2Dl;
-use crate::file2dl::State::Incomplete;
 use crate::tmp::MetaData;
 use crate::url::Url;
 use random_string::generate;
@@ -9,7 +8,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -35,11 +33,12 @@ pub fn gen_if_name_some(
             let mut buf = String::new();
             file.read_to_string(&mut buf)?;
             let meta_data = serde_json::from_str::<MetaData>(&buf)?;
-            if meta_data.state == Incomplete
+            let file_size = get_file_size(&path.join(filename))?;
+            if file_size < total_size
                 && meta_data.link == link
                 && total_size == meta_data.total_size
             {
-                return Ok((filename.to_owned(), get_file_size(&path.join(filename))?));
+                return Ok((filename.to_owned(), file_size));
             }
         }
     }
@@ -68,6 +67,7 @@ pub fn gen_if_name_none(dl_location: &str) -> (String, usize) {
 pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
     let filename = url.filename;
     if filename.clone().is_some() {
+        println!("Filename is some");
         Ok(gen_if_name_some(
             &url.link,
             dir,
@@ -75,10 +75,14 @@ pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
             url.total_size,
         )?)
     } else {
+        println!("Filename is none");
         Ok(gen_if_name_none(dir))
     }
 }
 
+pub fn convert_mbs(mbs: f64) -> f64 {
+    mbs * 1024.0 * 1024.0
+}
 pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
     let client = ClientBuilder::new().build()?;
     if file2dl.url.range_support {
