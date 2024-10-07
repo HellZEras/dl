@@ -67,12 +67,6 @@ async fn download(
         f2dl.status.1.wait_for(|x| *x).await.unwrap();
         let chunk = packed_chunk?;
         let bandwidth = f2dl.bandwidth.load(Ordering::Relaxed);
-        if chunk.len() as usize > bandwidth && bandwidth != 0 {
-            if last_time.elapsed() < Duration::from_secs(1) {
-                sleep(time::Duration::from_secs(1) - last_time.elapsed()).await;
-            }
-        }
-
         bytes_downloaded_in_sec += chunk.len();
         if last_time.elapsed() >= Duration::from_secs(1) {
             f2dl.transfer_rate
@@ -82,6 +76,11 @@ async fn download(
         }
         file.write_all(&chunk)?;
         f2dl.size_on_disk.fetch_add(chunk.len(), Ordering::Relaxed);
+        if chunk.len() as usize > bandwidth && bandwidth != 0 {
+            if last_time.elapsed() < Duration::from_secs(1) {
+                sleep(time::Duration::from_secs(1) - last_time.elapsed()).await;
+            }
+        }
     }
 
     Ok(())

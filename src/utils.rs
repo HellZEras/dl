@@ -1,13 +1,9 @@
-use crate::file2dl::File2Dl;
 use crate::tmp::MetaData;
 use crate::url::Url;
 use random_string::generate;
-use reqwest::blocking::{ClientBuilder, Response};
-use reqwest::header::RANGE;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 
 const CHARSET: &str = "abcdefghijklmnopqrstuvwxyz0123456789";
 
@@ -80,20 +76,4 @@ pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
 
 pub fn convert_mbs(mbs: f64) -> f64 {
     mbs * 1024.0 * 1024.0
-}
-pub fn init_req(file2dl: &File2Dl) -> Result<Response, reqwest::Error> {
-    let client = ClientBuilder::new().build()?;
-    if file2dl.url.range_support {
-        let range_value = format!(
-            "bytes={}-{}",
-            file2dl.size_on_disk.load(Ordering::Relaxed),
-            file2dl.url.total_size
-        );
-        Ok(client
-            .get(file2dl.url.link.clone())
-            .header(RANGE, range_value)
-            .send()?)
-    } else {
-        Ok(client.get(file2dl.url.link.clone()).send()?)
-    }
 }

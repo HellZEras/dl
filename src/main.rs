@@ -1,6 +1,7 @@
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use crate::file2dl::File2Dl;
-use eframe::egui::{self, Color32, Id, Separator, Vec2};
-use file2dl::Download;
+use eframe::egui::{self, Color32, Separator};
 use gui::{
     dl_display::display_interface,
     extern_windows::{
@@ -9,7 +10,6 @@ use gui::{
     menu_bar::init_menu_bar,
     select::select_all,
 };
-use tokio::time::Instant;
 
 mod errors;
 mod file2dl;
@@ -143,17 +143,6 @@ impl Default for MyApp {
 }
 
 fn main() -> Result<(), eframe::Error> {
-    // let time = Instant::now();
-    // let mut file = File2Dl::new(
-    //     "https://dl.google.com/tag/s/appguid%3D%7B8A69D345-D564-463C-AFF1-A69D9E530F96%7D%26iid%3D%7B1174C0E1-F11C-F91A-BDB4-818C8DAE6F5E%7D%26lang%3Den%26browser%3D3%26usagestats%3D0%26appname%3DGoogle%2520Chrome%26needsadmin%3Dprefers%26ap%3Dx64-statsdef_1%26installdataindex%3Dempty/chrome/install/ChromeStandaloneSetup64.exe",
-    //     "Downloads",
-    //     0f64,
-    // )
-    // .await
-    // .unwrap();
-    // file.switch_status().unwrap();
-    // file.single_thread_dl().await.unwrap();
-    // println!("Time taken: {:?}", time.elapsed());
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Download Manager",
