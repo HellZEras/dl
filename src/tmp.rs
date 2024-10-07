@@ -19,7 +19,7 @@ pub fn init_tmp(f2dl: &File2Dl, file_name: &str) -> Result<(), std::io::Error> {
             link: f2dl.url.link.clone(),
             file_name: f2dl.url.filename.to_owned().unwrap_or_default(),
             total_size: f2dl.url.total_size,
-            bandwidth: f2dl.bandwidth.load(Ordering::Relaxed) as usize,
+            bandwidth: f2dl.bandwidth.load(Ordering::Relaxed),
         };
         json!(tmp_str).to_string()
     };

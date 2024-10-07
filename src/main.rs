@@ -1,7 +1,9 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+use std::{borrow::Borrow, net::TcpStream, time::Duration};
+
 use crate::file2dl::File2Dl;
-use eframe::egui::{self, Color32, Separator};
+use eframe::egui::{self, Color32, Layout, Separator};
 use gui::{
     dl_display::display_interface,
     extern_windows::{
@@ -9,6 +11,7 @@ use gui::{
     },
     menu_bar::init_menu_bar,
     select::select_all,
+    status_bar::display_status_bar,
 };
 
 mod errors;
@@ -96,6 +99,7 @@ struct MyApp {
     inner: Vec<Core>,
     popus: PopUps,
     select_all: bool,
+    connected_to_net: bool,
     file_channel: (
         std::sync::mpsc::Sender<File2Dl>,
         std::sync::mpsc::Receiver<File2Dl>,
@@ -118,7 +122,8 @@ impl Default for MyApp {
                 };
                 return Self {
                     inner: Vec::default(),
-                    popus: popus,
+                    popus,
+                    connected_to_net: false,
                     select_all: false,
                     file_channel: std::sync::mpsc::channel(),
                 };
@@ -136,6 +141,7 @@ impl Default for MyApp {
         Self {
             inner: core_collection,
             popus: PopUps::default(),
+            connected_to_net: false,
             select_all: false,
             file_channel: std::sync::mpsc::channel(),
         }
@@ -158,9 +164,11 @@ impl eframe::App for MyApp {
             ui.add(Separator::grow(Separator::default(), ui.available_width()));
             display_interface(self, ui, ctx);
         });
+        display_status_bar(ctx, self);
         if self.popus.download.show {
             show_input_window(ctx, self);
         }
+        ctx.request_repaint();
         if self.popus.confirm.show {
             let task = (self.popus.confirm.task)();
             show_confirm_window(
@@ -171,6 +179,7 @@ impl eframe::App for MyApp {
                 task,
             );
         }
+        self.connected_to_net = is_connected();
         if self.popus.bandwidth.show {
             show_bandwidth_edit_window(ctx, self, &self.popus.bandwidth.to_edit.clone());
         }
@@ -179,4 +188,8 @@ impl eframe::App for MyApp {
         }
         select_all(self);
     }
+}
+
+fn is_connected() -> bool {
+    TcpStream::connect_timeout(&("8.8.8.8:53".parse().unwrap()), Duration::from_secs(2)).is_ok()
 }

@@ -1,13 +1,5 @@
-use std::{
-    collections,
-    fs::{read_dir, remove_dir, remove_file},
-};
-
 use crate::{file2dl::File2Dl, Core, MyApp};
-use eframe::{
-    egui::{self, Button, Color32, ComboBox, Label, Pos2, TextEdit, Vec2, Window},
-    epaint::color,
-};
+use eframe::egui::{self, Button, Color32, Pos2, TextEdit, Vec2};
 pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
     let window_size = egui::vec2(250.0, 200.0);
     let center = calc_center(ctx, window_size);
@@ -52,7 +44,6 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                                 Ok(file) => file_tx.send(file).unwrap(),
                                 Err(e) => {
                                     tx.send(e.to_string()).unwrap();
-                                    return;
                                 }
                             };
                         });
@@ -246,9 +237,8 @@ pub fn show_bandwidth_edit_window(ctx: &eframe::egui::Context, interface: &mut M
                                     crate::BandwidthUnit::Kbs => {
                                         match interface.popus.bandwidth.value.parse::<f64>() {
                                             Ok(bandwidth) => bandwidth * 1024.0,
-                                            Err(_) => {
-                                                interface.popus.bandwidth.error =
-                                                    String::from("Enter a valid number");
+                                            Err(e) => {
+                                                interface.popus.bandwidth.error = e.to_string();
                                                 return;
                                             }
                                         }
@@ -256,9 +246,8 @@ pub fn show_bandwidth_edit_window(ctx: &eframe::egui::Context, interface: &mut M
                                     crate::BandwidthUnit::Mbs => {
                                         match interface.popus.bandwidth.value.parse::<f64>() {
                                             Ok(bandwidth) => bandwidth * 1024.0 * 1024.0,
-                                            Err(_) => {
-                                                interface.popus.bandwidth.error =
-                                                    String::from("Enter a valid number");
+                                            Err(e) => {
+                                                interface.popus.bandwidth.error = e.to_string();
                                                 return;
                                             }
                                         }
@@ -266,9 +255,8 @@ pub fn show_bandwidth_edit_window(ctx: &eframe::egui::Context, interface: &mut M
                                     crate::BandwidthUnit::Gbs => {
                                         match interface.popus.bandwidth.value.parse::<f64>() {
                                             Ok(bandwidth) => bandwidth * 1024.0 * 1024.0 * 1024.0,
-                                            Err(_) => {
-                                                interface.popus.bandwidth.error =
-                                                    String::from("Enter a valid number");
+                                            Err(e) => {
+                                                interface.popus.bandwidth.error = e.to_string();
                                                 return;
                                             }
                                         }

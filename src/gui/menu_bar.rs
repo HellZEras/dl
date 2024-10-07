@@ -1,9 +1,6 @@
 use crate::MyApp;
 use eframe::egui::{menu, Color32};
-use std::{
-    fs::{read_dir, remove_file},
-    sync::Arc,
-};
+use std::fs::{read_dir, remove_file};
 
 pub fn init_menu_bar(interface: &mut MyApp, ui: &mut eframe::egui::Ui) {
     menu::bar(ui, |ui| {

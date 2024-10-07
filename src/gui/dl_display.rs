@@ -1,6 +1,5 @@
 use eframe::egui::{
-    menu, Checkbox, Color32, Label, Layout, ProgressBar, RichText, Rounding, Separator, Style,
-    TextWrapMode, Vec2, Widget,
+    Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, TextWrapMode, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 use tokio::runtime::Runtime;
@@ -16,15 +15,15 @@ pub fn display_interface(
         .striped(true)
         .resizable(false)
         .auto_shrink(true)
-        .scroll_bar_visibility(eframe::egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+        .scroll_bar_visibility(eframe::egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .column(Column::auto().resizable(false))
-        .column(Column::remainder().resizable(true).at_least(72.0))
-        .column(Column::auto().resizable(false).at_most(130.0))
-        .column(Column::auto().resizable(false).at_least(80.0))
-        .column(Column::auto().resizable(false).at_least(80.0))
-        .column(Column::remainder().resizable(false).at_least(110.0))
-        .column(Column::remainder().resizable(false).at_least(80.0))
-        .column(Column::remainder().resizable(false))
+        .column(Column::auto().resizable(true).at_least(72.0))
+        .column(Column::remainder().resizable(true).at_most(130.0))
+        .column(Column::remainder().resizable(true).at_most(80.0))
+        .column(Column::remainder().resizable(true).at_most(80.0))
+        .column(Column::remainder().resizable(true).at_least(120.0))
+        .column(Column::remainder().resizable(true).at_most(80.0))
+        .column(Column::remainder().resizable(true))
         .header(20.0, |mut header| {
             header.col(|ui| {
                 ui.add_sized(
@@ -65,6 +64,7 @@ pub fn display_interface(
         .body(|mut body| {
             for core in interface.inner.iter_mut() {
                 let status = *core.file.status.1.borrow();
+                let connected = interface.connected_to_net;
                 let done = core
                     .file
                     .complete
@@ -167,24 +167,31 @@ pub fn display_interface(
                             let mut file_clone = core.file.clone();
                             std::thread::spawn(move ||{
                                 rt.block_on(async move {
-                                    match file_clone.single_thread_dl().await {
-                                        Ok(_) => {},
-                                        Err(e) => {
-                                            tx.send(e.to_string()).unwrap()
-                                        },
+                                    loop{
+                                        match file_clone.single_thread_dl().await {
+                                            Ok(_) => break,
+                                            Err(e) => {
+                                                tx.send(e.to_string()).unwrap()
+                                            },
+                                        }
                                     }
                                 });
                             });
                             core.started = true;
                         }
-                        if !done && status {
-                            if let Ok(e) = core.channel.1.try_recv() {
-                                println!("{e}");
-                                ui.colored_label(Color32::RED, e);
-                            } else {
+                        let mut has_error = false;
+                        let mut error = String::new();
+                        if let Ok(e) = core.channel.1.try_recv(){
+                            has_error = true;
+                            error = e;
+                        }
+
+                        if !done && status && !has_error{
                                 ui.colored_label(Color32::GREEN, "Downloading");
-                            }
-                        } else if !done && !status {
+                        }
+                        else if !done && status && has_error{
+                            ui.colored_label(Color32::RED, error);
+                        }  else if !done && !status && !has_error{
                             ui.colored_label(Color32::YELLOW, "Paused");
                         } else {
                             ui.colored_label(Color32::DARK_GREEN, "Complete");
@@ -213,7 +220,11 @@ pub fn display_interface(
                         }
                     });
                     row.col(|ui| {
-                        let transfer_rate = core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed);
+                        let transfer_rate = if !status || done || !connected{
+                            0
+                        } else {
+                            core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed)
+                        };
                         let res = if transfer_rate == 0 {
                             ui.colored_label(Color32::YELLOW,format!("{:.4}MB/s",transfer_rate as f64 / 1024.0 / 1024.0))
                         } else if transfer_rate >= 500_000_000 {
@@ -228,7 +239,7 @@ pub fn display_interface(
                     row.col(|ui|{
                         let transfer_rate = core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed);
                         let total_size = core.file.url.total_size;
-                        let time_left = if transfer_rate == 0 {
+                        let time_left = if transfer_rate == 0 && !done{
                             "Unknown".to_string()
                         } else {
                             let time_left = (total_size as f64 - progress as f64) / transfer_rate as f64;
@@ -245,10 +256,8 @@ pub fn display_interface(
                                 if ui.button("Resume").clicked() {
                                     core.file.switch_status().unwrap();
                                 }
-                            } else {
-                                if ui.button("Pause").clicked() {
+                            } else if ui.button("Pause").clicked(){
                                     core.file.switch_status().unwrap();
-                                }
                             }
                         } else {
                             let res = ui.label("Nothing to do");

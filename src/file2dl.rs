@@ -8,7 +8,7 @@ use crate::tmp::{init_tmp, MetaData};
 use crate::url::Url;
 use crate::utils::{convert_mbs, gen, get_file_size};
 use std::fs::{create_dir, read_dir, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -74,13 +74,12 @@ async fn download(
             bytes_downloaded_in_sec = 0;
             last_time = Instant::now();
         }
+        if chunk.len() > bandwidth && bandwidth != 0 && last_time.elapsed() < Duration::from_secs(1)
+        {
+            sleep(time::Duration::from_secs(1) - last_time.elapsed()).await;
+        }
         file.write_all(&chunk)?;
         f2dl.size_on_disk.fetch_add(chunk.len(), Ordering::Relaxed);
-        if chunk.len() as usize > bandwidth && bandwidth != 0 {
-            if last_time.elapsed() < Duration::from_secs(1) {
-                sleep(time::Duration::from_secs(1) - last_time.elapsed()).await;
-            }
-        }
     }
 
     Ok(())
