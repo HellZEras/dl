@@ -2,8 +2,10 @@ use crate::errors::UrlError;
 use crate::errors::UrlError::InvalidUrl;
 use content_disposition::parse_content_disposition;
 use regex::Regex;
-use reqwest::header::{HeaderMap, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE};
-use reqwest::{blocking::Client, blocking::ClientBuilder, blocking::Response, Error};
+use reqwest::{
+    header::{HeaderMap, ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE},
+    Client, ClientBuilder, Error, Response,
+};
 use std::time::Duration;
 
 const FILENAME_EXPRESSION: &str = r#"^[^\/:*?"<>|]+\.[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)?$"#;
@@ -35,7 +37,7 @@ pub struct Url {
 }
 
 impl Url {
-    pub fn range_support(
+    pub async fn range_support(
         url: &str,
         total_size: usize,
         client: &Client,
@@ -54,15 +56,15 @@ impl Url {
             }
             return Ok(false);
         }
-        let res = client.get(url).header(RANGE, "bytes=0-1").send()?;
+        let res = client.get(url).header(RANGE, "bytes=0-1").send().await?;
         if res.headers().to_owned().content_length() == Some(1) {
             return Ok(true);
         }
         Ok(false)
     }
 
-    fn head_req(link: &str, client: &Client) -> Result<Response, Error> {
-        client.head(link).send()
+    async fn head_req(link: &str, client: &Client) -> Result<Response, Error> {
+        client.head(link).send().await
     }
     fn parse_url(link: &str) -> Option<String> {
         let filename = link.split("/").last()?;
@@ -72,7 +74,7 @@ impl Url {
         }
         None
     }
-    pub fn from(mut link: &str) -> Result<Self, UrlError> {
+    pub async fn from(mut link: &str) -> Result<Self, UrlError> {
         if link.ends_with("/") {
             link = link.trim_end_matches('/');
         }
@@ -83,7 +85,7 @@ impl Url {
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(5))
             .build()?;
-        let res = Self::head_req(link, &client)?;
+        let res = Self::head_req(link, &client).await?;
         let headers = res.headers().to_owned();
         let filename: Option<String> = headers
             .clone()
@@ -91,7 +93,7 @@ impl Url {
             .or_else(|| Self::parse_url(link));
         let content_length = headers.clone().content_length();
         let total_size = content_length.unwrap_or_default();
-        let range_support = Self::range_support(link, total_size, &client, &headers)?;
+        let range_support = Self::range_support(link, total_size, &client, &headers).await?;
         Ok(Self {
             link: link.to_string(),
             filename,

@@ -5,9 +5,5 @@ pub fn select_all(interface: &mut MyApp) {
         for core in interface.inner.iter_mut() {
             core.selected = true;
         }
-    } else {
-        for core in interface.inner.iter_mut() {
-            core.selected = false;
-        }
     }
 }

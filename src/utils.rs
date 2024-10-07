@@ -67,7 +67,6 @@ pub fn gen_if_name_none(dl_location: &str) -> (String, usize) {
 pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
     let filename = url.filename;
     if filename.clone().is_some() {
-        println!("Filename is some");
         Ok(gen_if_name_some(
             &url.link,
             dir,
@@ -75,7 +74,6 @@ pub fn gen(url: Url, dir: &str) -> Result<(String, usize), std::io::Error> {
             url.total_size,
         )?)
     } else {
-        println!("Filename is none");
         Ok(gen_if_name_none(dir))
     }
 }

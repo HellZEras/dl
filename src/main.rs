@@ -1,14 +1,15 @@
-use std::fs::File;
-
 use crate::file2dl::File2Dl;
-use eframe::egui::{self, Color32, Separator, Vec2};
+use eframe::egui::{self, Color32, Id, Separator, Vec2};
 use file2dl::Download;
 use gui::{
     dl_display::display_interface,
-    extern_windows::{show_confirm_window, show_input_window},
+    extern_windows::{
+        show_bandwidth_edit_window, show_confirm_window, show_error_window, show_input_window,
+    },
     menu_bar::init_menu_bar,
     select::select_all,
 };
+use tokio::time::Instant;
 
 mod errors;
 mod file2dl;
@@ -16,12 +17,26 @@ mod gui;
 mod tmp;
 mod url;
 mod utils;
-#[derive(Default)]
 struct DownloadInterface {
     error: String,
     url: String,
     bandwidth: String,
     show: bool,
+    error_channel: (
+        std::sync::mpsc::Sender<String>,
+        std::sync::mpsc::Receiver<String>,
+    ),
+}
+impl Default for DownloadInterface {
+    fn default() -> Self {
+        Self {
+            error: String::default(),
+            url: String::default(),
+            bandwidth: String::default(),
+            show: false,
+            error_channel: std::sync::mpsc::channel(),
+        }
+    }
 }
 #[derive(Default)]
 struct ErrorInterface {
@@ -34,12 +49,38 @@ struct PopUps {
     error: ErrorInterface,
     confirm: ConfirmInterface,
     download: DownloadInterface,
+    bandwidth: BandwidthInterface,
+}
+#[derive(Debug, Default, PartialEq, Eq)]
+enum BandwidthUnit {
+    Kbs,
+    #[default]
+    Mbs,
+    Gbs,
 }
 #[derive(Default)]
-struct ConfirmInterface {
+struct BandwidthInterface {
+    error: String,
     value: String,
+    show: bool,
+    unit: BandwidthUnit,
+    to_edit: String,
+}
+struct ConfirmInterface {
+    text: String,
     color: Color32,
     show: bool,
+    task: Box<dyn Fn() -> Box<dyn FnOnce(&mut MyApp)>>,
+}
+impl Default for ConfirmInterface {
+    fn default() -> Self {
+        ConfirmInterface {
+            text: String::new(),
+            color: Color32::default(),
+            show: false,
+            task: Box::new(|| Box::new(|_app: &mut MyApp| {})),
+        }
+    }
 }
 struct Core {
     file: File2Dl,
@@ -50,10 +91,15 @@ struct Core {
         std::sync::mpsc::Receiver<String>,
     ),
 }
+
 struct MyApp {
     inner: Vec<Core>,
     popus: PopUps,
     select_all: bool,
+    file_channel: (
+        std::sync::mpsc::Sender<File2Dl>,
+        std::sync::mpsc::Receiver<File2Dl>,
+    ),
 }
 
 impl Default for MyApp {
@@ -68,11 +114,13 @@ impl Default for MyApp {
                     },
                     confirm: ConfirmInterface::default(),
                     download: DownloadInterface::default(),
+                    bandwidth: BandwidthInterface::default(),
                 };
                 return Self {
                     inner: Vec::default(),
                     popus: popus,
                     select_all: false,
+                    file_channel: std::sync::mpsc::channel(),
                 };
             }
         };
@@ -89,19 +137,23 @@ impl Default for MyApp {
             inner: core_collection,
             popus: PopUps::default(),
             select_all: false,
+            file_channel: std::sync::mpsc::channel(),
         }
     }
 }
 
-fn main() -> eframe::Result<()> {
-    // let file = File2Dl::new(
-    //     "https://filesampleshub.com/download/document/txt/sample2.txt",
+fn main() -> Result<(), eframe::Error> {
+    // let time = Instant::now();
+    // let mut file = File2Dl::new(
+    //     "https://dl.google.com/tag/s/appguid%3D%7B8A69D345-D564-463C-AFF1-A69D9E530F96%7D%26iid%3D%7B1174C0E1-F11C-F91A-BDB4-818C8DAE6F5E%7D%26lang%3Den%26browser%3D3%26usagestats%3D0%26appname%3DGoogle%2520Chrome%26needsadmin%3Dprefers%26ap%3Dx64-statsdef_1%26installdataindex%3Dempty/chrome/install/ChromeStandaloneSetup64.exe",
     //     "Downloads",
-    //     0.0,
+    //     0f64,
     // )
+    // .await
     // .unwrap();
-    // file.switch_status();
-    // file.single_thread_dl().unwrap();
+    // file.switch_status().unwrap();
+    // file.single_thread_dl().await.unwrap();
+    // println!("Time taken: {:?}", time.elapsed());
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "Download Manager",
@@ -115,20 +167,27 @@ impl eframe::App for MyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             init_menu_bar(self, ui);
             ui.add(Separator::grow(Separator::default(), ui.available_width()));
-            display_interface(self, ui);
+            display_interface(self, ui, ctx);
         });
         if self.popus.download.show {
             show_input_window(ctx, self);
         }
         if self.popus.confirm.show {
+            let task = (self.popus.confirm.task)();
             show_confirm_window(
                 ctx,
                 self,
-                &self.popus.confirm.value.clone(),
                 self.popus.confirm.color,
+                &self.popus.confirm.text.clone(),
+                task,
             );
         }
+        if self.popus.bandwidth.show {
+            show_bandwidth_edit_window(ctx, self, &self.popus.bandwidth.to_edit.clone());
+        }
+        if self.popus.error.show {
+            show_error_window(ctx, self, &self.popus.error.value.clone());
+        }
         select_all(self);
-        ctx.request_repaint();
     }
 }

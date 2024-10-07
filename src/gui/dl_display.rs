@@ -1,19 +1,29 @@
-use eframe::egui::{Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, Vec2};
+use eframe::egui::{
+    menu, Checkbox, Color32, Label, Layout, ProgressBar, RichText, Rounding, Separator, Style,
+    TextWrapMode, Vec2, Widget,
+};
 use egui_extras::{Column, TableBuilder};
+use tokio::runtime::Runtime;
 
 use crate::{file2dl::Download, MyApp};
 
-pub fn display_interface(interface: &mut MyApp, ui: &mut eframe::egui::Ui) {
+pub fn display_interface(
+    interface: &mut MyApp,
+    ui: &mut eframe::egui::Ui,
+    ctx: &eframe::egui::Context,
+) {
     TableBuilder::new(ui)
         .striped(true)
         .resizable(false)
         .auto_shrink(true)
         .scroll_bar_visibility(eframe::egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
         .column(Column::auto().resizable(false))
-        .column(Column::remainder().resizable(false))
-        .column(Column::remainder().resizable(false))
-        .column(Column::remainder().resizable(false))
-        .column(Column::remainder().resizable(false))
+        .column(Column::remainder().resizable(true).at_least(72.0))
+        .column(Column::auto().resizable(false).at_most(130.0))
+        .column(Column::auto().resizable(false).at_least(80.0))
+        .column(Column::auto().resizable(false).at_least(80.0))
+        .column(Column::remainder().resizable(false).at_least(110.0))
+        .column(Column::remainder().resizable(false).at_least(80.0))
         .column(Column::remainder().resizable(false))
         .header(20.0, |mut header| {
             header.col(|ui| {
@@ -36,64 +46,140 @@ pub fn display_interface(interface: &mut MyApp, ui: &mut eframe::egui::Ui) {
                 ui.add(Separator::grow(Separator::default(), ui.available_width()));
             });
             header.col(|ui| {
-                ui.heading("Bandwidth Mb/s");
+                ui.heading("Limiter");
                 ui.add(Separator::grow(Separator::default(), ui.available_width()));
             });
             header.col(|ui| {
-                ui.heading("Action");
+                ui.heading("Transfer rate");
+                ui.add(Separator::grow(Separator::default(), ui.available_width()));
+            });
+            header.col(|ui| {
+                ui.heading("Time left");
+                ui.add(Separator::grow(Separator::default(), ui.available_width()));
+            });
+            header.col(|ui| {
+                ui.heading("Toggle");
                 ui.add(Separator::grow(Separator::default(), ui.available_width()));
             });
         })
         .body(|mut body| {
             for core in interface.inner.iter_mut() {
-                body.row(20.0, |mut row| {
+                let status = *core.file.status.1.borrow();
+                let done = core
+                    .file
+                    .complete
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                let progress = core
+                .file
+                .size_on_disk
+                .load(std::sync::atomic::Ordering::Relaxed);
+                body.row(25.0, |mut row| {
                     row.col(|ui| {
                         ui.add(Checkbox::without_text(&mut core.selected));
                     });
                     row.col(|ui| {
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(&core.file.name_on_disk);
+                                let label = Label::new(&core.file.name_on_disk)
+                                    .wrap_mode(TextWrapMode::Truncate);
+                                let res = ui.add(label);
+                                if res.hovered(){
+                                    let text = format!("Url: {}\n(Double click to open file)",core.file.url.link);
+                                    res.show_tooltip_text(text);
+                                };
+                                if res.double_clicked(){
+                                    let path = format!("{}/{}",core.file.dir,core.file.name_on_disk);
+                                    match opener::open(path){
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            interface.popus.error.value = e.to_string();
+                                            interface.popus.error.show = true;
+                                        }
+                                    }
+                                }
                             });
                         });
                     });
                     row.col(|ui| {
-                        let progress = core
-                            .file
-                            .size_on_disk
-                            .load(std::sync::atomic::Ordering::Relaxed);
                         let progress_fraction = progress as f32 / core.file.url.total_size as f32;
-                        let progress_bar = ProgressBar::new(progress_fraction)
-                            .desired_width(200.0)
-                            .fill(Color32::GREEN)
-                            .text(
-                                RichText::new(format!("{:.2}%", progress_fraction * 100.0))
-                                    .strong()
-                                    .color(Color32::BLACK),
-                            )
-                            .rounding(Rounding::ZERO);
-                        ui.add(progress_bar);
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                let percentage = format!("{:.2}%", progress_fraction * 100.0);
+                                let mbs = core
+                                    .file
+                                    .size_on_disk
+                                    .load(std::sync::atomic::Ordering::Relaxed)
+                                    as f64
+                                    / 1024.0
+                                    / 1024.0;
+                                let total_mbs = core.file.url.total_size as f64 / 1024.0 / 1024.0;
+                                let text = format!("{:.3}MB/{:.3}MB", mbs, total_mbs);
+                                let progress_bar = {
+                                    if !done {
+                                        if status {
+                                            ProgressBar::new(progress_fraction)
+                                                .desired_width(130.0)
+                                                .text(
+                                                    RichText::new(percentage)
+                                                        .color(Color32::DARK_GRAY)
+                                                        .size(13.0)
+                                                        .strong(),
+                                                )
+                                                .fill(Color32::LIGHT_GREEN)
+                                                .rounding(Rounding::ZERO)
+                                        } else {
+                                            ProgressBar::new(progress_fraction)
+                                                .desired_width(130.0)
+                                                .text(
+                                                    RichText::new(percentage)
+                                                        .color(Color32::DARK_GRAY)
+                                                        .size(13.0)
+                                                        .strong(),
+                                                )
+                                                .fill(Color32::YELLOW)
+                                                .rounding(Rounding::ZERO)
+                                        }
+                                    } else {
+                                        ProgressBar::new(progress_fraction)
+                                            .desired_width(130.0)
+                                            .text(
+                                                RichText::new(percentage)
+                                                    .color(Color32::BLACK)
+                                                    .size(13.0)
+                                                    .strong(),
+                                            )
+                                            .fill(Color32::DARK_GREEN)
+                                            .rounding(Rounding::ZERO)
+                                    }
+                                };
+                                let pb_ui = ui.add(progress_bar);
+                                if pb_ui.hovered() {
+                                    pb_ui.show_tooltip_text(text);
+                                }
+                                ctx.request_repaint_of(pb_ui.ctx.viewport_id());
+                            })
+                        });
                     });
                     row.col(|ui| {
-                        let status = core.file.status.load(std::sync::atomic::Ordering::Relaxed);
-                        let done = core
-                            .file
-                            .size_on_disk
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                            == core.file.url.total_size;
                         if status && !core.started {
-                            let file_clone = core.file.clone();
                             let tx = core.channel.0.clone();
-                            std::thread::spawn(move || loop {
-                                match file_clone.single_thread_dl() {
-                                    Ok(_) => break,
-                                    Err(e) => tx.send(e.to_string()).unwrap(),
-                                }
+                            let rt = Runtime::new().unwrap();
+                            let mut file_clone = core.file.clone();
+                            std::thread::spawn(move ||{
+                                rt.block_on(async move {
+                                    match file_clone.single_thread_dl().await {
+                                        Ok(_) => {},
+                                        Err(e) => {
+                                            tx.send(e.to_string()).unwrap()
+                                        },
+                                    }
+                                });
                             });
                             core.started = true;
                         }
                         if !done && status {
                             if let Ok(e) = core.channel.1.try_recv() {
+                                println!("{e}");
                                 ui.colored_label(Color32::RED, e);
                             } else {
                                 ui.colored_label(Color32::GREEN, "Downloading");
@@ -105,32 +191,70 @@ pub fn display_interface(interface: &mut MyApp, ui: &mut eframe::egui::Ui) {
                         }
                     });
                     row.col(|ui| {
-                        ui.label(
-                            core.file
-                                .bandwidth
-                                .load(std::sync::atomic::Ordering::Relaxed)
-                                .to_string(),
-                        );
+                        let bandwidth = core.file
+                        .bandwidth
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                        let text = if bandwidth == 0 {
+                            "Unlimited".to_string()
+                        } else if bandwidth >= 500_000_000 {
+                            format!("{:.4} Gbps", bandwidth as f64 / 1_000_000_000.0)
+                        } else if bandwidth >= 500_000 {
+                            format!("{:.4} Mbps", bandwidth as f64 / 1_000_000.0)
+                        } else {
+                            format!("{:.4} Kbps", bandwidth as f64 / 1_000.0)
+                        };
+                        let res = ui.label(text);
+                        if res.hovered() {
+                            res.show_tooltip_text("Bandwidth limiter\n(Click twice to change)");
+                        }
+                        if res.double_clicked() {
+                            interface.popus.bandwidth.show = true;
+                            interface.popus.bandwidth.to_edit = core.file.name_on_disk.clone();
+                        }
                     });
                     row.col(|ui| {
-                        let status = core.file.status.load(std::sync::atomic::Ordering::Relaxed);
-                        let done = core
-                            .file
-                            .size_on_disk
-                            .load(std::sync::atomic::Ordering::Relaxed)
-                            == core.file.url.total_size;
+                        let transfer_rate = core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed);
+                        let res = if transfer_rate == 0 {
+                            ui.colored_label(Color32::YELLOW,format!("{:.4}MB/s",transfer_rate as f64 / 1024.0 / 1024.0))
+                        } else if transfer_rate >= 500_000_000 {
+                            ui.colored_label(Color32::GREEN,format!("{:.4} Gbps", transfer_rate as f64 / 1_000_000_000.0))
+                        } else if transfer_rate >= 500_000 {
+                            ui.colored_label(Color32::GREEN,format!("{:.4} Mbps", transfer_rate as f64 / 1_000_000.0))
+                        } else {
+                            ui.colored_label(Color32::GREEN,format!("{:.4} Kbps", transfer_rate as f64 / 1_000.0))
+                        };
+                        ctx.request_repaint_of(res.ctx.viewport_id());
+                    });
+                    row.col(|ui|{
+                        let transfer_rate = core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed);
+                        let total_size = core.file.url.total_size;
+                        let time_left = if transfer_rate == 0 {
+                            "Unknown".to_string()
+                        } else {
+                            let time_left = (total_size as f64 - progress as f64) / transfer_rate as f64;
+                            let hours = time_left as u64 / 3600;
+                            let minutes = (time_left as u64 % 3600) / 60;
+                            let seconds = time_left as u64 % 60;
+                            format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+                        };
+                        ui.label(time_left);
+                    });
+                    row.col(|ui| {
                         if !done {
                             if !status {
                                 if ui.button("Resume").clicked() {
-                                    core.file.switch_status();
+                                    core.file.switch_status().unwrap();
                                 }
                             } else {
                                 if ui.button("Pause").clicked() {
-                                    core.file.switch_status();
+                                    core.file.switch_status().unwrap();
                                 }
                             }
                         } else {
-                            ui.label("Nothing to do");
+                            let res = ui.label("Nothing to do");
+                            if res.hovered() {
+                                res.show_tooltip_text("File has already finished downloading,therefor its can't be toggled");
+                            }
                         }
                     });
                 });
