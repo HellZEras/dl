@@ -19,7 +19,7 @@ pub fn display_interface(
         .column(Column::auto().resizable(false))
         .column(Column::auto().resizable(true).at_least(72.0))
         .column(Column::remainder().resizable(true).at_most(130.0))
-        .column(Column::remainder().resizable(true).at_most(80.0))
+        .column(Column::auto().resizable(true).at_least(80.0))
         .column(Column::remainder().resizable(true).at_most(80.0))
         .column(Column::remainder().resizable(true).at_least(120.0))
         .column(Column::remainder().resizable(true).at_most(80.0))
@@ -64,7 +64,7 @@ pub fn display_interface(
         .body(|mut body| {
             for core in interface.inner.iter_mut() {
                 let status = *core.file.status.1.borrow();
-                let connected = interface.connected_to_net;
+                let connected = *interface.connected_to_net.connected.lock();
                 let done = core
                     .file
                     .complete
@@ -162,7 +162,6 @@ pub fn display_interface(
                     });
                     row.col(|ui| {
                         if status && !core.started {
-                            let tx = core.channel.0.clone();
                             let rt = Runtime::new().unwrap();
                             let mut file_clone = core.file.clone();
                             std::thread::spawn(move ||{
@@ -170,8 +169,7 @@ pub fn display_interface(
                                     loop{
                                         match file_clone.single_thread_dl().await {
                                             Ok(_) => break,
-                                            Err(e) => {
-                                                tx.send(e.to_string()).unwrap()
+                                            Err(_) => {
                                             },
                                         }
                                     }
@@ -179,19 +177,12 @@ pub fn display_interface(
                             });
                             core.started = true;
                         }
-                        let mut has_error = false;
-                        let mut error = String::new();
-                        if let Ok(e) = core.channel.1.try_recv(){
-                            has_error = true;
-                            error = e;
+                        if !connected {
+                            ui.colored_label(Color32::RED, "No connection");
                         }
-
-                        if !done && status && !has_error{
-                                ui.colored_label(Color32::GREEN, "Downloading");
-                        }
-                        else if !done && status && has_error{
-                            ui.colored_label(Color32::RED, error);
-                        }  else if !done && !status && !has_error{
+                        else if !done && status {
+                            ui.colored_label(Color32::GREEN, "Downloading");
+                        } else if !done && !status {
                             ui.colored_label(Color32::YELLOW, "Paused");
                         } else {
                             ui.colored_label(Color32::DARK_GREEN, "Complete");
@@ -220,7 +211,7 @@ pub fn display_interface(
                         }
                     });
                     row.col(|ui| {
-                        let transfer_rate = if !status || done || !connected{
+                        let transfer_rate = if !status || done || !connected {
                             0
                         } else {
                             core.file.transfer_rate.load(std::sync::atomic::Ordering::Relaxed)

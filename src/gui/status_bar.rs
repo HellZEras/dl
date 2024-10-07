@@ -1,3 +1,5 @@
+use std::{net::TcpStream, thread::sleep, time::Duration};
+
 use eframe::egui::{Align, Color32, Layout, Response, Separator, Ui};
 
 use crate::MyApp;
@@ -22,8 +24,15 @@ pub fn display_status_bar(ctx: &eframe::egui::Context, app: &mut MyApp) {
             }
             total
         };
-
-        // Outer layout that spans the entire bottom panel
+        if !app.connected_to_net.started {
+            let safe = app.connected_to_net.connected.clone();
+            std::thread::spawn(move || loop {
+                let connected = is_connected();
+                *safe.lock() = connected;
+                sleep(Duration::from_secs(2));
+            });
+        }
+        app.connected_to_net.started = true;
         ui.with_layout(Layout::left_to_right(Align::Min), |ui| {
             // Left side: connection status
             let status = {
@@ -37,18 +46,23 @@ pub fn display_status_bar(ctx: &eframe::egui::Context, app: &mut MyApp) {
                 }
                 state
             };
-            let res = display_transfer_rate(ui, transfer_rate, status, app.connected_to_net);
+            let connected = app.connected_to_net.connected.lock();
+            let res = display_transfer_rate(ui, transfer_rate, status, *connected);
             let sep = ui.add(Separator::grow(Separator::default(), ui.available_height()));
-            ui.add_space(ui.available_width() - res.rect.width() - sep.rect.width());
+            ui.add_space(ui.available_width() - res.rect.width() - sep.rect.width() - 40.0);
             ui.add(Separator::grow(Separator::default(), ui.available_height()));
-            display_connection_status(ui, app);
+            display_connection_status(ui, *connected);
         });
     });
 }
 
+fn is_connected() -> bool {
+    TcpStream::connect_timeout(&("8.8.8.8:53").parse().unwrap(), Duration::from_secs(2)).is_ok()
+}
+
 // Function to display the connection status
-fn display_connection_status(ui: &mut Ui, app: &MyApp) {
-    if app.connected_to_net {
+fn display_connection_status(ui: &mut Ui, connected: bool) {
+    if connected {
         ui.colored_label(Color32::GREEN, "Connected");
     } else {
         ui.colored_label(Color32::RED, "Disconnected");

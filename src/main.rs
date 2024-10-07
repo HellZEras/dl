@@ -1,9 +1,14 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-use std::{borrow::Borrow, net::TcpStream, time::Duration};
+use std::{
+    borrow::Borrow,
+    net::TcpStream,
+    sync::{atomic::AtomicBool, Arc},
+    time::Duration,
+};
 
 use crate::file2dl::File2Dl;
-use eframe::egui::{self, Color32, Layout, Separator};
+use eframe::egui::{self, mutex::Mutex, Color32, Layout, Separator};
 use gui::{
     dl_display::display_interface,
     extern_windows::{
@@ -89,17 +94,25 @@ struct Core {
     file: File2Dl,
     started: bool,
     selected: bool,
-    channel: (
-        std::sync::mpsc::Sender<String>,
-        std::sync::mpsc::Receiver<String>,
-    ),
+}
+struct Connected {
+    connected: Arc<Mutex<bool>>,
+    started: bool,
+}
+impl Default for Connected {
+    fn default() -> Self {
+        Self {
+            connected: Arc::new(Mutex::new(false)),
+            started: false,
+        }
+    }
 }
 
 struct MyApp {
     inner: Vec<Core>,
     popus: PopUps,
     select_all: bool,
-    connected_to_net: bool,
+    connected_to_net: Connected,
     file_channel: (
         std::sync::mpsc::Sender<File2Dl>,
         std::sync::mpsc::Receiver<File2Dl>,
@@ -123,7 +136,7 @@ impl Default for MyApp {
                 return Self {
                     inner: Vec::default(),
                     popus,
-                    connected_to_net: false,
+                    connected_to_net: Connected::default(),
                     select_all: false,
                     file_channel: std::sync::mpsc::channel(),
                 };
@@ -135,13 +148,12 @@ impl Default for MyApp {
                 file: file.to_owned(),
                 started: false,
                 selected: false,
-                channel: std::sync::mpsc::channel(),
             })
             .collect::<Vec<Core>>();
         Self {
             inner: core_collection,
             popus: PopUps::default(),
-            connected_to_net: false,
+            connected_to_net: Connected::default(),
             select_all: false,
             file_channel: std::sync::mpsc::channel(),
         }
@@ -179,7 +191,6 @@ impl eframe::App for MyApp {
                 task,
             );
         }
-        self.connected_to_net = is_connected();
         if self.popus.bandwidth.show {
             show_bandwidth_edit_window(ctx, self, &self.popus.bandwidth.to_edit.clone());
         }
@@ -188,8 +199,4 @@ impl eframe::App for MyApp {
         }
         select_all(self);
     }
-}
-
-fn is_connected() -> bool {
-    TcpStream::connect_timeout(&("8.8.8.8:53".parse().unwrap()), Duration::from_secs(2)).is_ok()
 }

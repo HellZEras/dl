@@ -76,7 +76,6 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                             file,
                             started: false,
                             selected: false,
-                            channel: std::sync::mpsc::channel(),
                         };
                         interface.inner.push(core);
                         interface.popus.download.show = false;
