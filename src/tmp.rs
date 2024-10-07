@@ -1,7 +1,7 @@
 use crate::file2dl::File2Dl;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::sync::atomic::Ordering;
 
@@ -24,11 +24,7 @@ pub fn init_tmp(f2dl: &File2Dl, file_name: &str) -> Result<(), std::io::Error> {
         json!(tmp_str).to_string()
     };
     let tmp_name = format!("{}/.{}.metadata", f2dl.dir, file_name);
-    let mut tmp_file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(tmp_name)?;
+    let mut tmp_file = File::create(tmp_name)?;
     tmp_file.write_all(json_str.as_bytes())?;
 
     Ok(())

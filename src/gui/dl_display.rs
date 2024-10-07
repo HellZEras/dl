@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use eframe::egui::{
     Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, TextWrapMode, Vec2,
 };
@@ -164,12 +166,17 @@ pub fn display_interface(
                         if status && !core.started {
                             let rt = Runtime::new().unwrap();
                             let mut file_clone = core.file.clone();
+                            let tx = core.channel.0.clone();
                             std::thread::spawn(move ||{
                                 rt.block_on(async move {
                                     loop{
                                         match file_clone.single_thread_dl().await {
                                             Ok(_) => break,
-                                            Err(_) => {
+                                            Err(e) => {
+                                                let error = format!("{:?}",e);
+                                                if !error.contains("ConnectError"){
+                                                    tx.send(error).unwrap()
+                                                }
                                             },
                                         }
                                     }
@@ -177,11 +184,16 @@ pub fn display_interface(
                             });
                             core.started = true;
                         }
-                        if !connected {
-                            ui.colored_label(Color32::RED, "No connection");
+                        if !connected{
+                            ui.colored_label(Color32::RED, "Disconnected");
                         }
                         else if !done && status {
-                            ui.colored_label(Color32::GREEN, "Downloading");
+                            if let Ok(e) = core.channel.1.try_recv() {
+                                println!("{e}");
+                                ui.colored_label(Color32::RED, e);
+                            } else {
+                                ui.colored_label(Color32::GREEN, "Downloading");
+                            }
                         } else if !done && !status {
                             ui.colored_label(Color32::YELLOW, "Paused");
                         } else {
@@ -253,7 +265,7 @@ pub fn display_interface(
                         } else {
                             let res = ui.label("Nothing to do");
                             if res.hovered() {
-                                res.show_tooltip_text("File has already finished downloading,therefor its can't be toggled");
+                                res.show_tooltip_text("File has already finished downloading,therefor it can't be toggled");
                             }
                         }
                     });

@@ -1,3 +1,5 @@
+use std::sync::mpsc::channel;
+
 use crate::{file2dl::File2Dl, Core, MyApp};
 use eframe::egui::{self, Button, Color32, Pos2, TextEdit, Vec2};
 pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
@@ -43,6 +45,8 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                             match File2Dl::new(&link, "Downloads", bandwidth).await {
                                 Ok(file) => file_tx.send(file).unwrap(),
                                 Err(e) => {
+                                    let error = format!("{:?}", e);
+                                    println!("{}", error);
                                     tx.send(e.to_string()).unwrap();
                                 }
                             };
@@ -76,6 +80,7 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                             file,
                             started: false,
                             selected: false,
+                            channel: channel(),
                         };
                         interface.inner.push(core);
                         interface.popus.download.show = false;

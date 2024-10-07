@@ -3,7 +3,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use std::{
     borrow::Borrow,
     net::TcpStream,
-    sync::{atomic::AtomicBool, Arc},
+    sync::{atomic::AtomicBool, mpsc, Arc},
     time::Duration,
 };
 
@@ -94,6 +94,10 @@ struct Core {
     file: File2Dl,
     started: bool,
     selected: bool,
+    channel: (
+        std::sync::mpsc::Sender<String>,
+        std::sync::mpsc::Receiver<String>,
+    ),
 }
 struct Connected {
     connected: Arc<Mutex<bool>>,
@@ -148,6 +152,7 @@ impl Default for MyApp {
                 file: file.to_owned(),
                 started: false,
                 selected: false,
+                channel: mpsc::channel(),
             })
             .collect::<Vec<Core>>();
         Self {

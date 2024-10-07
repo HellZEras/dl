@@ -18,18 +18,12 @@ pub trait Download {
 }
 impl Download for File2Dl {
     async fn single_thread_dl(&mut self) -> Result<(), FileDownloadError> {
-        if !Path::new(&self.dir).exists() {
-            create_dir(&self.dir)?
-        }
         let full_path = format!("{}/{}", &self.dir, &self.name_on_disk);
         let mut file = OpenOptions::new()
             .append(true)
             .create(true)
             .truncate(false)
             .open(full_path.clone())?;
-        if self.url.range_support {
-            init_tmp(self, &self.name_on_disk)?;
-        }
         let client = reqwest::ClientBuilder::new().build()?;
         download(self, &mut file, &client).await?;
         self.complete.store(true, Ordering::Relaxed);
@@ -121,10 +115,14 @@ impl File2Dl {
     }
 
     pub async fn new(link: &str, dir: &str, bandwidth: f64) -> Result<Self, UrlError> {
+        if !Path::new(dir).exists() {
+            create_dir(dir)?
+        }
         let url = Url::from(link).await?;
+        let range_support = url.range_support;
         let (name_on_disk, size_on_disk) = gen(url.clone(), dir)?;
         let bandwidth_as_bytes = convert_mbs(bandwidth) as usize;
-        Ok(Self {
+        let file2dl = Self {
             url,
             size_on_disk: Arc::new(AtomicUsize::new(size_on_disk)),
             status: tokio::sync::watch::channel(false),
@@ -133,7 +131,11 @@ impl File2Dl {
             bandwidth: Arc::new(AtomicUsize::new(bandwidth_as_bytes)),
             complete: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             transfer_rate: Arc::new(AtomicUsize::new(0)),
-        })
+        };
+        if range_support {
+            init_tmp(&file2dl, &file2dl.name_on_disk)?;
+        }
+        Ok(file2dl)
     }
     pub fn from(dir: &str) -> Result<Vec<File2Dl>, std::io::Error> {
         let mut collection: Vec<File2Dl> = Vec::new();
@@ -158,28 +160,30 @@ impl File2Dl {
                     let mut buffer = String::new();
                     let mut tmp_file = File::open(tmp_path)?;
                     tmp_file.read_to_string(&mut buffer)?;
-                    let meta_data: MetaData = serde_json::from_str(&buffer)?;
-                    let file2dl_path = Path::new(dir).join(&file_name);
-                    let size_on_disk = Arc::new(AtomicUsize::new(get_file_size(&file2dl_path)?));
-                    let url = Url {
-                        link: meta_data.link,
-                        filename: Some(meta_data.file_name),
-                        total_size: meta_data.total_size,
-                        range_support: true,
-                    };
-                    let file2dl = File2Dl {
-                        url,
-                        size_on_disk: size_on_disk.clone(),
-                        status: tokio::sync::watch::channel(false),
-                        name_on_disk: file_name,
-                        dir: dir.to_string(),
-                        bandwidth: Arc::new(AtomicUsize::new(meta_data.bandwidth)),
-                        complete: Arc::new(std::sync::atomic::AtomicBool::new(
-                            meta_data.total_size == size_on_disk.load(Ordering::Relaxed),
-                        )),
-                        transfer_rate: Arc::new(AtomicUsize::new(0)),
-                    };
-                    collection.push(file2dl);
+                    if let Ok::<MetaData, _>(meta_data) = serde_json::from_str(&buffer) {
+                        let file2dl_path = Path::new(dir).join(&file_name);
+                        let size_on_disk =
+                            Arc::new(AtomicUsize::new(get_file_size(&file2dl_path)?));
+                        let url = Url {
+                            link: meta_data.link,
+                            filename: Some(meta_data.file_name),
+                            total_size: meta_data.total_size,
+                            range_support: true,
+                        };
+                        let file2dl = File2Dl {
+                            url,
+                            size_on_disk: size_on_disk.clone(),
+                            status: tokio::sync::watch::channel(false),
+                            name_on_disk: file_name,
+                            dir: dir.to_string(),
+                            bandwidth: Arc::new(AtomicUsize::new(meta_data.bandwidth)),
+                            complete: Arc::new(std::sync::atomic::AtomicBool::new(
+                                meta_data.total_size == size_on_disk.load(Ordering::Relaxed),
+                            )),
+                            transfer_rate: Arc::new(AtomicUsize::new(0)),
+                        };
+                        collection.push(file2dl);
+                    }
                 }
             }
         }
