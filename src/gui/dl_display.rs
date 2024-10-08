@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use eframe::egui::{
     Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, TextWrapMode, Vec2,
 };

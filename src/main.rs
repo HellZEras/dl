@@ -1,14 +1,9 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-use std::{
-    borrow::Borrow,
-    net::TcpStream,
-    sync::{atomic::AtomicBool, mpsc, Arc},
-    time::Duration,
-};
+use std::sync::{mpsc, Arc};
 
 use crate::file2dl::File2Dl;
-use eframe::egui::{self, mutex::Mutex, Color32, Layout, Separator};
+use eframe::egui::{self, mutex::Mutex, Color32, Separator};
 use gui::{
     dl_display::display_interface,
     extern_windows::{
