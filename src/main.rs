@@ -1,30 +1,39 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-use std::sync::{mpsc, Arc};
-
-use crate::file2dl::File2Dl;
-use eframe::egui::{self, mutex::Mutex, Color32, Separator};
-use gui::{
-    dl_display::display_interface,
-    extern_windows::{
-        show_bandwidth_edit_window, show_confirm_window, show_error_window, show_input_window,
-    },
-    menu_bar::init_menu_bar,
-    select::select_all,
-    status_bar::display_status_bar,
+use std::{
+    path::Path,
+    sync::{mpsc, Arc},
 };
 
-mod errors;
-mod file2dl;
-mod gui;
-mod tmp;
-mod url;
-mod utils;
+use dl::{file2dl::File2Dl, utils::count_files};
+use dl_display::display_interface;
+use eframe::egui::{self, mutex::Mutex, Color32, Separator};
+use extern_windows::{
+    show_bandwidth_edit_window, show_confirm_window, show_error_window, show_input_window,
+};
+use menu_bar::init_menu_bar;
+use select::select_all;
+use status_bar::display_status_bar;
+mod dl_display;
+mod extern_windows;
+mod menu_bar;
+mod select;
+mod status_bar;
+
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
+pub enum Threading {
+    #[default]
+    Single,
+    Multi,
+}
+
 struct DownloadInterface {
     error: String,
     url: String,
     bandwidth: String,
     show: bool,
+    threading: Threading,
+    threads: String,
     error_channel: (
         std::sync::mpsc::Sender<String>,
         std::sync::mpsc::Receiver<String>,
@@ -36,6 +45,8 @@ impl Default for DownloadInterface {
             error: String::default(),
             url: String::default(),
             bandwidth: String::default(),
+            threading: Threading::default(),
+            threads: String::default(),
             show: false,
             error_channel: std::sync::mpsc::channel(),
         }
@@ -93,6 +104,8 @@ struct Core {
         std::sync::mpsc::Sender<String>,
         std::sync::mpsc::Receiver<String>,
     ),
+    threading: Threading,
+    threads: usize,
 }
 struct Connected {
     connected: Arc<Mutex<bool>>,
@@ -147,6 +160,15 @@ impl Default for MyApp {
                 file: file.to_owned(),
                 started: false,
                 selected: false,
+                threading: {
+                    if Path::new(&file.dir).join(&file.name_on_disk).is_dir() {
+                        Threading::Multi
+                    } else {
+                        Threading::Single
+                    }
+                },
+                threads: count_files(&format!("{}/.{}", file.dir, file.name_on_disk))
+                    .unwrap_or_default(),
                 channel: mpsc::channel(),
             })
             .collect::<Vec<Core>>();

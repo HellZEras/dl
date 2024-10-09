@@ -1,7 +1,9 @@
 use std::sync::mpsc::channel;
 
-use crate::{file2dl::File2Dl, Core, MyApp};
+use dl::file2dl::File2Dl;
 use eframe::egui::{self, Button, Color32, Pos2, TextEdit, Vec2};
+
+use crate::{Core, MyApp, Threading};
 pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
     let window_size = egui::vec2(250.0, 200.0);
     let center = calc_center(ctx, window_size);
@@ -22,6 +24,25 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
             ui.text_edit_singleline(&mut interface.popus.download.url);
             ui.label("Bandwidth in Mbs: (Will be ignored if empty)");
             ui.text_edit_singleline(&mut interface.popus.download.bandwidth);
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.radio_value(
+                        &mut interface.popus.download.threading,
+                        crate::Threading::Single,
+                        "Single Threaded",
+                    );
+                    ui.radio_value(
+                        &mut interface.popus.download.threading,
+                        crate::Threading::Multi,
+                        "Multi Threaded",
+                    );
+                    ui.add_sized(
+                        [55.0, 20.0],
+                        TextEdit::singleline(&mut interface.popus.download.threads)
+                            .hint_text("Threads"),
+                    );
+                })
+            });
             ui.add_space(5f32);
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -29,6 +50,21 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                         if interface.popus.download.bandwidth.is_empty() {
                             interface.popus.download.bandwidth = "0.0".to_string();
                         }
+                        let threads = match interface.popus.download.threads.parse::<usize>() {
+                            Ok(threads) => match threads {
+                                threads if threads > 0 => threads,
+                                _ => {
+                                    interface.popus.download.error =
+                                        String::from("minimum number of threads is 1");
+                                    return;
+                                }
+                            },
+                            Err(_) => {
+                                interface.popus.download.error =
+                                    String::from("Enter a valid number");
+                                return;
+                            }
+                        };
                         let bandwidth = match interface.popus.download.bandwidth.parse::<f64>() {
                             Ok(bandwidth) => bandwidth,
                             Err(_) => {
@@ -41,6 +77,7 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                         let tx = interface.popus.download.error_channel.0.clone();
                         let file_tx = interface.file_channel.0.clone();
                         let link = interface.popus.download.url.clone();
+
                         rt.block_on(async move {
                             match File2Dl::new(&link, "Downloads", bandwidth).await {
                                 Ok(file) => file_tx.send(file).unwrap(),
@@ -81,6 +118,8 @@ pub fn show_input_window(ctx: &eframe::egui::Context, interface: &mut MyApp) {
                             started: false,
                             selected: false,
                             channel: channel(),
+                            threading: interface.popus.download.threading.to_owned(),
+                            threads,
                         };
                         interface.inner.push(core);
                         interface.popus.download.show = false;
@@ -270,7 +309,7 @@ pub fn show_bandwidth_edit_window(ctx: &eframe::egui::Context, interface: &mut M
                         };
                         for core in interface.inner.iter_mut() {
                             if core.file.name_on_disk == name {
-                                core.file.bandwidth.store(
+                                core.file.bandwidth_chosen.store(
                                     bandwidth as usize,
                                     std::sync::atomic::Ordering::Relaxed,
                                 );

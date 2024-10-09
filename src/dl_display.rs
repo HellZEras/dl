@@ -1,10 +1,13 @@
+use std::path::Path;
+
+use dl::file2dl::Download;
 use eframe::egui::{
     Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, TextWrapMode, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 use tokio::runtime::Runtime;
 
-use crate::{file2dl::Download, MyApp};
+use crate::{MyApp, Threading};
 
 pub fn display_interface(
     interface: &mut MyApp,
@@ -165,21 +168,41 @@ pub fn display_interface(
                             let rt = Runtime::new().unwrap();
                             let mut file_clone = core.file.clone();
                             let tx = core.channel.0.clone();
-                            std::thread::spawn(move ||{
-                                rt.block_on(async move {
-                                    loop{
-                                        match file_clone.single_thread_dl().await {
-                                            Ok(_) => break,
-                                            Err(e) => {
-                                                let error = format!("{:?}",e);
-                                                if !error.contains("ConnectError"){
-                                                    tx.send(error).unwrap()
-                                                }
-                                            },
+                            let threads = core.threads;
+                            if core.threading.clone() == Threading::Single && Path::new(&core.file.dir).join(&core.file.name_on_disk).is_file(){
+                                std::thread::spawn(move ||{
+                                    rt.block_on(async move {
+                                        loop{
+                                            match file_clone.single_thread_dl().await {
+                                                Ok(_) => break,
+                                                Err(e) => {
+                                                    let error = format!("{:?}",e);
+                                                    if !error.contains("ConnectError"){
+                                                        tx.send(error).unwrap()
+                                                    }
+                                                },
+                                            }
                                         }
-                                    }
+                                    });
                                 });
-                            });
+                            }
+                            else {
+                                std::thread::spawn(move ||{
+                                    rt.block_on(async move {
+                                        loop{
+                                            match file_clone.multi_thread_dl(threads).await {
+                                                Ok(_) => break,
+                                                Err(e) => {
+                                                    let error = format!("{:?}",e);
+                                                    if !error.contains("ConnectError"){
+                                                        tx.send(error).unwrap()
+                                                    }
+                                                },
+                                            }
+                                        }
+                                    });
+                                });
+                            }
                             core.started = true;
                         }
                         if !connected{
@@ -200,7 +223,7 @@ pub fn display_interface(
                     });
                     row.col(|ui| {
                         let bandwidth = core.file
-                        .bandwidth
+                        .bandwidth_chosen
                         .load(std::sync::atomic::Ordering::Relaxed);
                         let text = if bandwidth == 0 {
                             "Unlimited".to_string()
@@ -252,6 +275,9 @@ pub fn display_interface(
                         ui.label(time_left);
                     });
                     row.col(|ui| {
+                        let supposed_name = core.file.name_on_disk.clone();
+                        let final_name = supposed_name.trim_start_matches(".");
+                        let supposed_path = Path::new(final_name);
                         if !done {
                             if !status {
                                 if ui.button("Resume").clicked() {
@@ -260,7 +286,16 @@ pub fn display_interface(
                             } else if ui.button("Pause").clicked(){
                                     core.file.switch_status().unwrap();
                             }
-                        } else {
+                        } else if Path::new(&core.file.name_on_disk).is_dir() && !supposed_path.exists(){
+                            let res = ui.button("Finish");
+                            if res.clicked(){
+                                core.file.switch_status().unwrap();
+                            }
+                            if res.hovered() {
+                                res.show_tooltip_text("File has already finished downloading,but the data was not merged to the download file");
+                            }
+                        }
+                        else{
                             let res = ui.label("Nothing to do");
                             if res.hovered() {
                                 res.show_tooltip_text("File has already finished downloading,therefor it can't be toggled");
