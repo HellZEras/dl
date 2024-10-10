@@ -2,12 +2,13 @@ use std::path::Path;
 
 use dl::file2dl::Download;
 use eframe::egui::{
-    Checkbox, Color32, Label, ProgressBar, RichText, Rounding, Separator, TextWrapMode, Vec2,
+    Checkbox, Color32, Image, ImageButton, Label, ProgressBar, RichText, Rounding, Separator,
+    TextWrapMode, Vec2,
 };
 use egui_extras::{Column, TableBuilder};
 use tokio::runtime::Runtime;
 
-use crate::{MyApp, Threading};
+use crate::{MyApp, Threading, ICON, PAUSE, RESUME};
 
 pub fn display_interface(
     interface: &mut MyApp,
@@ -20,13 +21,13 @@ pub fn display_interface(
         .auto_shrink(true)
         .scroll_bar_visibility(eframe::egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .column(Column::auto().resizable(false))
-        .column(Column::auto().resizable(true).at_least(72.0))
-        .column(Column::remainder().resizable(true).at_most(130.0))
+        .column(Column::auto().resizable(true).at_least(200.0))
+        .column(Column::auto().resizable(true).at_least(150.0))
         .column(Column::auto().resizable(true).at_least(80.0))
-        .column(Column::remainder().resizable(true).at_most(80.0))
+        .column(Column::auto().resizable(true).at_least(130.0))
         .column(Column::remainder().resizable(true).at_least(120.0))
-        .column(Column::remainder().resizable(true).at_most(80.0))
-        .column(Column::remainder().resizable(true))
+        .column(Column::auto().resizable(false).at_least(80.0))
+        .column(Column::remainder().resizable(false))
         .header(20.0, |mut header| {
             header.col(|ui| {
                 ui.add_sized(
@@ -60,7 +61,7 @@ pub fn display_interface(
                 ui.add(Separator::grow(Separator::default(), ui.available_width()));
             });
             header.col(|ui| {
-                ui.heading("Toggle");
+                ui.heading("");
                 ui.add(Separator::grow(Separator::default(), ui.available_width()));
             });
         })
@@ -275,32 +276,30 @@ pub fn display_interface(
                         ui.label(time_left);
                     });
                     row.col(|ui| {
+                        let icon = Image::from_bytes("bytes://PAUSE", ICON);
+                        let img_butt = ImageButton::new(icon);
                         let supposed_name = core.file.name_on_disk.clone();
-                        let final_name = supposed_name.trim_start_matches(".");
-                        let supposed_path = Path::new(final_name);
-                        if !done {
-                            if !status {
-                                if ui.button("Resume").clicked() {
+                        let supposed_path = Path::new(&core.file.dir).join(&supposed_name);
+                        let mut name = core.file.name_on_disk.clone();
+                        name.insert(0, '.');
+                        ui.vertical_centered(|ui|{
+                            if !done {
+                                if ui.add(img_butt.clone()).clicked(){
                                     core.file.switch_status().unwrap();
                                 }
-                            } else if ui.button("Pause").clicked(){
+                            } else if Path::new(&name).is_dir() && supposed_path.exists() {
+                                let res = ui.add(img_butt);
+                                if res.clicked() {
                                     core.file.switch_status().unwrap();
+                                }
+                                if res.hovered() {
+                                    res.show_tooltip_text("File has already finished downloading, but the data was not merged to the download file");
+                                }
                             }
-                        } else if Path::new(&core.file.name_on_disk).is_dir() && !supposed_path.exists(){
-                            let res = ui.button("Finish");
-                            if res.clicked(){
-                                core.file.switch_status().unwrap();
+                            else{
+                                ui.add_enabled(false,img_butt);
                             }
-                            if res.hovered() {
-                                res.show_tooltip_text("File has already finished downloading,but the data was not merged to the download file");
-                            }
-                        }
-                        else{
-                            let res = ui.label("Nothing to do");
-                            if res.hovered() {
-                                res.show_tooltip_text("File has already finished downloading,therefor it can't be toggled");
-                            }
-                        }
+                        });
                     });
                 });
             }

@@ -1,10 +1,5 @@
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-use std::{
-    path::Path,
-    sync::{mpsc, Arc},
-};
-
 use dl::{file2dl::File2Dl, utils::count_files};
 use dl_display::display_interface;
 use eframe::egui::{self, mutex::Mutex, Color32, Separator};
@@ -14,12 +9,17 @@ use extern_windows::{
 use menu_bar::init_menu_bar;
 use select::select_all;
 use status_bar::display_status_bar;
+use std::{
+    path::Path,
+    sync::{mpsc, Arc},
+};
 mod dl_display;
 mod extern_windows;
 mod menu_bar;
 mod select;
 mod status_bar;
 
+pub const ICON: &[u8] = include_bytes!("../icon.png");
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub enum Threading {
     #[default]
@@ -187,7 +187,10 @@ fn main() -> Result<(), eframe::Error> {
     eframe::run_native(
         "Download Manager",
         options,
-        Box::new(|_cc| Ok(Box::<MyApp>::default())),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Ok(Box::<MyApp>::default())
+        }),
     )
 }
 

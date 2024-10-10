@@ -46,12 +46,15 @@ pub fn display_status_bar(ctx: &eframe::egui::Context, app: &mut MyApp) {
                 }
                 state
             };
-            let connected = app.connected_to_net.connected.lock();
-            let res = display_transfer_rate(ui, transfer_rate, status, *connected);
-            let sep = ui.add(Separator::grow(Separator::default(), ui.available_height()));
-            ui.add_space(ui.available_width() - res.rect.width() - sep.rect.width() - 40.0);
+            let connected = *app.connected_to_net.connected.lock();
+            ui.add_space(20.0);
+            display_transfer_rate(ui, transfer_rate, status, connected);
+            ui.add_space(20.0);
             ui.add(Separator::grow(Separator::default(), ui.available_height()));
-            display_connection_status(ui, *connected);
+            ui.add_space(ui.available_width() - 100.0);
+            ui.add(Separator::grow(Separator::default(), ui.available_height()));
+            ui.add_space(15.0);
+            display_connection_status(ui, connected);
         });
     });
 }
